@@ -143,10 +143,16 @@ let astA = false, astT = 0;
 const astVel = new T.Vector3();
 
 /* ============================================================
-   SHARK — GLB preferred, procedural fallback
+   GLTFLoader availability check
    ============================================================ */
+const GLTF_AVAILABLE = typeof T.GLTFLoader === 'function';
+if (!GLTF_AVAILABLE){
+  console.warn('[SHARK] THREE.GLTFLoader is not available. Sharks will use the procedural model only.');
+}
 
-/* ---------- Procedural fallback (used while GLB loads or if it fails) ---------- */
+/* ============================================================
+   SHARK
+   ============================================================ */
 const SHARK_PROFILE = [
   new T.Vector2(0.05, 0), new T.Vector2(0.20, 0.5), new T.Vector2(0.50, 1.5),
   new T.Vector2(0.90, 2.8), new T.Vector2(1.50, 4.2), new T.Vector2(2.10, 6.0),
@@ -355,7 +361,6 @@ function buildProceduralShark(){
   return g;
 }
 
-/* ---------- Pool: procedural fallback + async GLB override ---------- */
 const SHARK_GLB_TARGET_LEN = 55;
 
 const sharkPool = [];
@@ -380,58 +385,52 @@ for (let i = 0; i < 3; i++){
   };
   sharkPool.push(slot);
 
-  /* Load GLB for this slot */
-  new T.GLTFLoader().load(
-    'assets/shark.glb',
-    (gltf) => {
-      try {
-        const scene = gltf.scene;
+  // Only try to load GLB if GLTFLoader is available
+  if (GLTF_AVAILABLE){
+    new T.GLTFLoader().load(
+      'assets/shark.glb',
+      (gltf) => {
+        try {
+          const scene = gltf.scene;
+          const box = new T.Box3().setFromObject(scene);
+          const size = box.getSize(new T.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          scene.scale.setScalar(SHARK_GLB_TARGET_LEN / maxDim);
+          scene.rotation.y = Math.PI;
 
-        /* Normalise size to target length */
-        const box = new T.Box3().setFromObject(scene);
-        const size = box.getSize(new T.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const scale = SHARK_GLB_TARGET_LEN / maxDim;
-        scene.scale.setScalar(scale);
+          scene.traverse(o => {
+            if (o.isMesh || o.isSkinnedMesh) o.frustumCulled = false;
+          });
 
-        /* Face our game's forward direction (-Z) */
-        scene.rotation.y = Math.PI;
+          procedural.visible = false;
+          obj.add(scene);
+          slot.glb = scene;
+          slot.useGLB = true;
 
-        /* Disable frustum culling on skinned meshes */
-        scene.traverse(o => {
-          if (o.isMesh || o.isSkinnedMesh) o.frustumCulled = false;
-        });
+          if (gltf.animations && gltf.animations.length > 0){
+            const mixer = new T.AnimationMixer(scene);
+            const clip = gltf.animations[0];
+            const action = mixer.clipAction(clip);
+            action.setLoop(T.LoopRepeat);
+            action.play();
+            slot.mixer = mixer;
+          }
 
-        /* Hide procedural, add GLB */
-        procedural.visible = false;
-        obj.add(scene);
-        slot.glb = scene;
-        slot.useGLB = true;
-
-        /* Set up animation mixer if animations exist */
-        if (gltf.animations && gltf.animations.length > 0){
-          const mixer = new T.AnimationMixer(scene);
-          const clip = gltf.animations[0];
-          const action = mixer.clipAction(clip);
-          action.setLoop(T.LoopRepeat);
-          action.play();
-          slot.mixer = mixer;
+          console.log('[SHARK] GLB loaded for slot', i, '— animations:', gltf.animations?.length || 0);
+        } catch (e){
+          console.warn('[SHARK] GLB setup failed for slot', i, e);
         }
-
-        console.log('[SHARK] GLB loaded for slot', i, 'anims:', gltf.animations?.length || 0);
-      } catch (e){
-        console.warn('[SHARK] GLB setup failed for slot', i, e);
+      },
+      undefined,
+      (err) => {
+        console.warn('[SHARK] GLB load failed for slot', i, '— procedural fallback active. Error:', err);
       }
-    },
-    undefined,
-    (err) => {
-      console.warn('[SHARK] GLB load failed for slot', i, '— procedural fallback stays', err);
-    }
-  );
+    );
+  }
 }
 
 /* ============================================================
-   DRAGON (unchanged procedural)
+   DRAGON
    ============================================================ */
 function buildDragon(){
   const g = new T.Group();
@@ -568,7 +567,7 @@ for (let i = 0; i < 3; i++){
 }
 
 /* ============================================================
-   OCTOPUS (unchanged)
+   OCTOPUS
    ============================================================ */
 const oct = new T.Group(); S.add(oct);
 {
@@ -846,7 +845,6 @@ function tickSharks(dt){
     s.life -= dt;
     s.phase += dt;
 
-    /* Animate: GLB uses mixer, procedural uses shader + jaw */
     if (s.useGLB){
       if (s.mixer) s.mixer.update(dt);
     } else {
@@ -855,7 +853,6 @@ function tickSharks(dt){
       s.procedural.userData.jawPivot.rotation.x = -Math.abs(Math.sin(s.phase * 1.5)) * 0.22 - 0.03;
     }
 
-    /* Target */
     if (!s.target || !s.target.visible) s.target = findNearestSlice(s.obj.position);
 
     let targetYaw = s.obj.rotation.y;
@@ -885,7 +882,6 @@ function tickSharks(dt){
       s.obj.position.z += fwdZ * 15 * dt;
     }
 
-    /* Smooth yaw */
     let yawDiff = targetYaw - s.obj.rotation.y;
     while (yawDiff > Math.PI)  yawDiff -= Math.PI * 2;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
@@ -893,7 +889,6 @@ function tickSharks(dt){
     if (Math.abs(yawDiff) < maxRot) s.obj.rotation.y = targetYaw;
     else s.obj.rotation.y += Math.sign(yawDiff) * maxRot;
 
-    /* Banking */
     const targetRoll = -Math.sign(yawDiff) * Math.min(Math.abs(yawDiff), 0.35);
     s.obj.rotation.z += (targetRoll - s.obj.rotation.z) * Math.min(1, dt * 3);
 
@@ -1081,4 +1076,4 @@ export function tickAmbient(dt){
   tickDragons(dt);
   tickOctopus(dt);
   tickExplosions(dt);
-                                               }
+}
