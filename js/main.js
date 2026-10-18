@@ -19,20 +19,20 @@ import { startIntro, skipIntro, introStep } from './room/intro.js';
 import { tickPigeon, tickBirds, tickFlybys, resetFlybys, resetBirds, resetPigeon } from './creatures.js';
 import { tickSpace, aurora, aurora2 } from './space.js';
 import { tickKingKong, resetKingKong } from './kingkong.js';
+import { tickAmbient, resetAmbient } from './ambient.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
-console.log('%c[MAIN] v10-SLOW-SUN loaded', 'color:#0f0;font-weight:bold;font-size:14px');
+console.log('%c[MAIN] v11-EVENTS loaded', 'color:#0f0;font-weight:bold;font-size:14px');
 
 const SPAWN_LEAD = 440;
 const YAW_IN     = 2.0;
 const CAM_BACK   = 14;
-const BOOST_MUL  = 4.0;
+const BOOST_MUL  = 12;
 
-/* ---------- Slow-down button (created dynamically) ---------- */
+/* ---------- Slow-down button ---------- */
 const slowBtn = document.createElement('button');
 slowBtn.id = 'sb';
-slowBtn.className = 'hb h';
 slowBtn.textContent = '🐢';
 slowBtn.style.cssText =
   'position:fixed;bottom:max(14px,env(safe-area-inset-bottom));left:14px;' +
@@ -222,6 +222,7 @@ function resetRun(){
   G.hc = [1e9, 1e9];
   resetFlybys();
   resetKingKong();
+  resetAmbient();
   resetBirds();
   resetPigeon();
   resetWeather();
@@ -262,14 +263,12 @@ function play(dt){
 
   const base = 38 + Math.min(22, dist()/90);
 
-  /* ---------- Target speed: slow overrides boost, boost is 5x base ---------- */
   const targetSpeed = slowHeld
     ? 0
     : base * (1 + G.P.boost * BOOST_MUL) * (G.P.hit > 0 ? .55 : 1);
   G.P.fs += (targetSpeed - G.P.fs) * (1 - Math.exp(-3*dt));
   G.P.hit = Math.max(0, G.P.hit - dt);
 
-  /* ---------- No auto-up: vertical only when you push up/down ---------- */
   G.P.vy += (iy * 26 * (1 + G.P.boost * .9) - G.P.vy) * (1 - Math.exp(-3*dt));
 
   for (const c of cls){
@@ -386,10 +385,10 @@ function play(dt){
   tickBirds(dt);
   tickFlybys(dt);
   tickKingKong(dt);
+  tickAmbient(dt);
   checkMission();
   tickTrail(dt, G.P.boost);
 
-  /* ---------- Camera: always behind player ---------- */
   cam.position.set(
     G.P.x - fx * CAM_BACK,
     G.P.y + 3.2,
