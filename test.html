@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body style="background:#111;color:#0f0;font:16px monospace;padding:20px">
+<pre id="log"></pre>
+<button id="go" style="font:700 24px system-ui;padding:20px;margin-top:20px">Click to test</button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="module">
+  const $ = id => document.getElementById(id);
+  $('log').textContent  = '✓ module script ran\n';
+  $('log').textContent += (window.THREE ? '✓ THREE r' + window.THREE.REVISION + ' loaded\n' : '✗ THREE MISSING\n');
+  try { new window.THREE.WebGLRenderer(); $('log').textContent += '✓ WebGL OK\n'; }
+  catch(e){ $('log').textContent += '✗ WebGL FAIL: ' + e.message + '\n'; }
+  $('go').onclick = () => { $('log').textContent += '✓ button click fired\n'; };
+</script>
+</body></html>
