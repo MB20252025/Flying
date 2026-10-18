@@ -22,7 +22,35 @@ import { tickKingKong, resetKingKong } from './kingkong.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
+console.log('%c[MAIN] v7-STEER loaded — yaw enabled, camera tracking (non-rotating)', 'color:#0f0;font-weight:bold;font-size:14px');
+
 const SPAWN_LEAD = 440;
+const YAW_MAX      = Math.PI / 2;     // ±90° steering limit
+const YAW_IN       = 2.0;             // rad/s while held (≈ 90° in 0.8s)
+const YAW_RETURN   = 1.2;             // rad/s auto-straighten
+
+/* ---------- Diagnostic overlay ---------- */
+let dbgEl = null;
+function ensureDbg(){
+  if (dbgEl) return;
+  dbgEl = document.createElement('div');
+  dbgEl.id = 'camdbg';
+  dbgEl.style.cssText =
+    'position:fixed;top:8px;left:8px;' +
+    'background:rgba(0,20,0,.92);color:#0f0;' +
+    'font:13px/1.4 monospace;padding:8px 12px;' +
+    'z-index:99999;pointer-events:none;' +
+    'border:2px solid #0f0;border-radius:6px;' +
+    'text-shadow:0 0 4px #0f0';
+  dbgEl.innerHTML =
+    'CAM <b style="color:#0ff">v7-STEER</b><br>' +
+    'Yaw: <span id="dbgY">?</span>°<br>' +
+    'Offset X: <span id="dbgX">?</span><br>' +
+    'Offset Z: <span id="dbgZ">?</span><br>' +
+    'CamAngle: <span id="dbgA" style="font-size:16px">?</span>';
+  document.body.appendChild(dbgEl);
+}
+ensureDbg();
 
 /* ---------- Cloud eyes ---------- */
 function makeEye(){
@@ -223,13 +251,18 @@ function play(dt){
   if (wb && !G.P.wasB) sfx.boost();
   G.P.wasB = wb;
 
-  /* NO YAW — the player always flies forward along -Z.
-     Left/right now strafes sideways. The camera never rotates. */
-  G.P.yaw = 0;
-  const fx = 0, fz = -1;
+  /* ---------- YAW: steer up to ±90°, auto-return when released ---------- */
+  if (Math.abs(ix) > 0.1){
+    G.P.yaw += ix * YAW_IN * dt;
+  } else {
+    const decay = YAW_RETURN * dt;
+    if (Math.abs(G.P.yaw) <= decay) G.P.yaw = 0;
+    else G.P.yaw -= Math.sign(G.P.yaw) * decay;
+  }
+  G.P.yaw = cl(G.P.yaw, -YAW_MAX, YAW_MAX);
 
-  /* strafe velocity: lerps toward the joystick input */
-  G.P.vx += (ix * 32 - G.P.vx) * (1 - Math.exp(-4*dt));
+  const fx = Math.sin(G.P.yaw);
+  const fz = -Math.cos(G.P.yaw);
 
   const base = 38 + Math.min(22, dist()/90);
   G.P.fs += (base * (1 + G.P.boost*.9) * (G.P.hit > 0 ? .55 : 1) - G.P.fs) * (1 - Math.exp(-3*dt));
@@ -247,7 +280,7 @@ function play(dt){
     c.in = i;
   }
 
-  G.P.x += G.P.vx * dt;
+  G.P.x += fx * G.P.fs * dt;
   G.P.y += G.P.vy * dt;
   G.P.z += fz * G.P.fs * dt;
   if (G.P.y < 14){ G.P.y = 14; G.P.vy = Math.max(G.P.vy, 0); }
@@ -257,18 +290,21 @@ function play(dt){
 
   const sp = cl((G.P.fs - 30)/70);
   dave.position.set(G.P.x, G.P.y, G.P.z);
-  /* Dave faces slightly toward his travel direction so strafing reads clearly,
-     but never more than ~40° off forward. */
-  dave.rotation.y = Math.atan2(G.P.vx, G.P.fs + 0.001);
+  /* Dave faces movement direction (his default nose is -Z, so we negate yaw) */
+  dave.rotation.y = -G.P.yaw;
   dave.visible = G.P.hit <= 0 || ((G.P.hit*12)|0) % 2 === 0;
   animD(dt, -.4 - .7*sp - .15*G.P.boost + .5*iy, -ix*.6, .3 + .9*G.P.boost + .2*Math.abs(ix), sp, G.tt);
 
+  /* ---------- Spawn items ahead in the CURRENT heading ---------- */
   G.spawnAccum += G.P.fs * dt;
   while (G.spawnAccum > G.spawnGap){
     G.spawnAccum -= G.spawnGap;
-    const ax = G.P.x + fx * SPAWN_LEAD;
-    const az = G.P.z + fz * SPAWN_LEAD;
-    pattern(ax, G.P.y, az, fx, fz);
+    pattern(
+      G.P.x + fx * SPAWN_LEAD,
+      G.P.y,
+      G.P.z + fz * SPAWN_LEAD,
+      fx, fz
+    );
     G.spawnGap = Math.max(55, 88 - dist()/150);
   }
 
@@ -290,7 +326,10 @@ function play(dt){
       if (u.gold){ G.Q.golds++; say('Golden slice! Dave: "Posh."', 1.8); }
       else G.Q.slices++;
       sfx.chime(u.gold);
-    } else if (o.position.z > G.P.z + 50) o.visible = false;
+    } else {
+      const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
+      if (behind < -60) o.visible = false;
+    }
   }
 
   for (const o of ob){
@@ -311,7 +350,8 @@ function play(dt){
       sfx.hit();
       say(['Dave: "Ow. Rude."', 'Dave: "Who parks a sofa up here?"', 'Dave: "Mind the doughnut, mate."'][Math.random()*3|0], 2);
     }
-    if (o.position.z > G.P.z + 60) o.visible = false;
+    const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
+    if (behind < -80) o.visible = false;
   }
 
   for (const o of rg){
@@ -320,7 +360,8 @@ function play(dt){
     u.age += dt;
     o.material.color.setHSL((G.tt*.3 + o.id*.1) % 1, .8, .65);
     o.scale.setScalar(Math.min(1, u.age*1.5));
-    if (!u.done && o.position.z > G.P.z){
+    const alongF = (G.P.x - o.position.x) * fx + (G.P.z - o.position.z) * fz;
+    if (!u.done && alongF > 0){
       u.done = true;
       const dx = G.P.x - o.position.x, dy = G.P.y - o.position.y;
       if (dx*dx + dy*dy < 80){
@@ -330,7 +371,8 @@ function play(dt){
         G.shake = .3;
       }
     }
-    if (o.position.z > G.P.z + 60) o.visible = false;
+    const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
+    if (behind < -80) o.visible = false;
   }
 
   tickPigeon(dt);
@@ -340,25 +382,39 @@ function play(dt){
   checkMission();
   tickTrail(dt, G.P.boost);
 
-  /* ---------- CAMERA: FIXED behind player, NEVER rotates ----------
-     Position is set directly from player each frame.
-     Look-at is always 25 units ahead along -Z.
-     No rotation. No yaw. No spin. */
+  /* ============================================================
+     CAMERA — tracks player position, does NOT rotate.
+     Always faces down world -Z, always offset (0, +3.2, +14).
+     Player turning NEVER changes camera orientation.
+     ============================================================ */
   cam.position.set(
     G.P.x,
     G.P.y + 3.2,
     G.P.z + 14
   );
   cam.up.set(0, 1, 0);
-  cam.lookAt(
-    G.P.x,
-    G.P.y + 1.2,
-    G.P.z - 25
-  );
+  cam.lookAt(G.P.x, G.P.y + 1.2, G.P.z - 25);
 
   if (cam.fov !== 64){
     cam.fov = 64;
     cam.updateProjectionMatrix();
+  }
+
+  /* ---------- Diagnostic readout ---------- */
+  const offX = cam.position.x - G.P.x;
+  const offZ = cam.position.z - G.P.z;
+  const angDeg = Math.atan2(offX, -offZ) * 180 / Math.PI;
+  const yawDeg = G.P.yaw * 180 / Math.PI;
+  const dbgY = document.getElementById('dbgY');
+  const dbgX = document.getElementById('dbgX');
+  const dbgZ = document.getElementById('dbgZ');
+  const dbgA = document.getElementById('dbgA');
+  if (dbgY){
+    dbgY.textContent = yawDeg.toFixed(1);
+    dbgX.textContent = offX.toFixed(2);
+    dbgZ.textContent = offZ.toFixed(2);
+    dbgA.textContent = angDeg.toFixed(1) + '°';
+    dbgA.style.color = Math.abs(angDeg) < 1 ? '#0f0' : '#f00';
   }
 
   tickWeather(dt);
