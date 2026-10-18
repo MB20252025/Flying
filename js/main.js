@@ -27,7 +27,7 @@ import {
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
-console.log('%c[MAIN] v12-LASER loaded', 'color:#0f0;font-weight:bold;font-size:14px');
+console.log('%c[MAIN] v13-LASER-ALWAYS loaded', 'color:#0f0;font-weight:bold;font-size:14px');
 
 const SPAWN_LEAD = 440;
 const YAW_IN     = 2.0;
@@ -114,11 +114,12 @@ function tickBeams(dt){
 }
 
 let shootCooldown = 0;
+
 function tryShoot(){
   const targets = getShootableTargets();
-  if (targets.length === 0) return;
-
   const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
+  const eyeY = G.P.y + 3.0;
+
   let best = null, bestD = 1e9;
   for (const t of targets){
     const dx = t.obj.position.x - G.P.x;
@@ -130,15 +131,19 @@ function tryShoot(){
     if (alongF < 0) continue;
     if (d < bestD){ bestD = d; best = t; }
   }
-  if (!best) return;
 
-  const eyeY = G.P.y + 3.0;
-  fireBeam(
-    { x: G.P.x, y: eyeY, z: G.P.z },
-    best.obj.position
-  );
-  killTarget(best);
-  tone(1200, 0.12, 'square', 0.12, 500);
+  if (best){
+    fireBeam({ x: G.P.x, y: eyeY, z: G.P.z }, best.obj.position);
+    killTarget(best);
+    tone(1200, 0.12, 'square', 0.12, 500);
+  } else {
+    const range = 450;
+    fireBeam(
+      { x: G.P.x, y: eyeY, z: G.P.z },
+      { x: G.P.x + fx * range, y: eyeY, z: G.P.z + fz * range }
+    );
+    tone(900, 0.10, 'square', 0.10, 400);
+  }
 }
 
 /* ---------- Cloud eyes ---------- */
@@ -490,7 +495,7 @@ function play(dt){
     if (behind < -80) o.visible = false;
   }
 
-  /* ---------- Laser shooting ---------- */
+  /* ---------- Laser shooting (always fires) ---------- */
   shootCooldown -= dt;
   if ((shootHeld || K.KeyX) && shootCooldown <= 0 && !trapped){
     shootCooldown = 0.35;
