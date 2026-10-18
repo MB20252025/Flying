@@ -3,7 +3,7 @@ import { CFG, best, saveCfg } from './config.js';
 import { G, dist } from './game.js';
 import { R, S, cam, PIXEL, setPR, resize } from './scene.js';
 import { initInput, K, INPUT, stick } from './input.js';
-import { sfx, tickAudio, setGain } from './audio.js';
+import { sfx, tickAudio, setGain, tone } from './audio.js';
 import { say, tickHud, checkMission } from './ui.js';
 
 import { sky, palette } from './sky.js';
@@ -19,11 +19,15 @@ import { startIntro, skipIntro, introStep } from './room/intro.js';
 import { tickPigeon, tickBirds, tickFlybys, resetFlybys, resetBirds, resetPigeon } from './creatures.js';
 import { tickSpace, aurora, aurora2 } from './space.js';
 import { tickKingKong, resetKingKong } from './kingkong.js';
-import { tickAmbient, resetAmbient } from './ambient.js';
+import {
+  tickAmbient, resetAmbient,
+  isPlayerTrapped,
+  getShootableTargets, killTarget
+} from './ambient.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
-console.log('%c[MAIN] v11-EVENTS loaded', 'color:#0f0;font-weight:bold;font-size:14px');
+console.log('%c[MAIN] v12-LASER loaded', 'color:#0f0;font-weight:bold;font-size:14px');
 
 const SPAWN_LEAD = 440;
 const YAW_IN     = 2.0;
@@ -51,6 +55,91 @@ slowBtn.addEventListener('pointerdown', e => {
 ['pointerup','pointercancel','pointerleave'].forEach(n =>
   slowBtn.addEventListener(n, () => { slowHeld = false; })
 );
+
+/* ---------- Shoot button ---------- */
+const shootBtn = document.createElement('button');
+shootBtn.id = 'sh';
+shootBtn.textContent = '🎯';
+shootBtn.style.cssText =
+  'position:fixed;bottom:max(14px,env(safe-area-inset-bottom));right:110px;' +
+  'width:70px;height:70px;border-radius:50%;padding:0;' +
+  'z-index:4;pointer-events:auto;font:700 28px system-ui,sans-serif;' +
+  'border:2px solid #fff8;background:#ffffff26;color:#fff;' +
+  'backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);' +
+  'display:none';
+document.body.appendChild(shootBtn);
+
+let shootHeld = false;
+shootBtn.addEventListener('pointerdown', e => {
+  shootHeld = true;
+  try { shootBtn.setPointerCapture(e.pointerId); } catch(_) {}
+});
+['pointerup','pointercancel','pointerleave'].forEach(n =>
+  shootBtn.addEventListener(n, () => { shootHeld = false; })
+);
+
+/* ---------- Laser beam pool ---------- */
+const beams = [];
+for (let i = 0; i < 5; i++){
+  const geo = new T.BufferGeometry();
+  const pos = new Float32Array(6);
+  pos[1] = pos[4] = -99999;
+  geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+  const mat = new T.LineBasicMaterial({color:0xff3300, transparent:true, opacity:1, fog:false});
+  const line = new T.Line(geo, mat);
+  line.frustumCulled = false;
+  line.visible = false;
+  S.add(line);
+  beams.push({ line, geo, mat, life: 0, pos });
+}
+
+function fireBeam(from, to){
+  const b = beams.find(x => x.life <= 0) || beams[0];
+  b.pos[0] = from.x; b.pos[1] = from.y; b.pos[2] = from.z;
+  b.pos[3] = to.x;   b.pos[4] = to.y;   b.pos[5] = to.z;
+  b.geo.attributes.position.needsUpdate = true;
+  b.life = 0.18;
+  b.mat.opacity = 1;
+  b.line.visible = true;
+}
+
+function tickBeams(dt){
+  for (const b of beams){
+    if (b.life > 0){
+      b.life -= dt;
+      b.mat.opacity = Math.max(0, b.life / 0.18);
+      if (b.life <= 0) b.line.visible = false;
+    }
+  }
+}
+
+let shootCooldown = 0;
+function tryShoot(){
+  const targets = getShootableTargets();
+  if (targets.length === 0) return;
+
+  const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
+  let best = null, bestD = 1e9;
+  for (const t of targets){
+    const dx = t.obj.position.x - G.P.x;
+    const dz = t.obj.position.z - G.P.z;
+    const dy = t.obj.position.y - G.P.y;
+    const d = Math.hypot(dx, dy, dz);
+    if (d > 550) continue;
+    const alongF = dx * fx + dz * fz;
+    if (alongF < 0) continue;
+    if (d < bestD){ bestD = d; best = t; }
+  }
+  if (!best) return;
+
+  const eyeY = G.P.y + 3.0;
+  fireBeam(
+    { x: G.P.x, y: eyeY, z: G.P.z },
+    best.obj.position
+  );
+  killTarget(best);
+  tone(1200, 0.12, 'square', 0.12, 500);
+}
 
 /* ---------- Cloud eyes ---------- */
 function makeEye(){
@@ -171,9 +260,10 @@ function startPlay(){
   $('sk').classList.add('h');
   ['sc','di','ms','bb','bo','pb'].forEach(id => $(id).classList.remove('h'));
   slowBtn.style.display = 'block';
+  shootBtn.style.display = 'block';
   say('RIGHT THEN, DAVE. WHERE TO?', 4.5);
   G.spawnAccum = 0;
-  G.spawnGap = 60;
+  G.spawnGap = 40;
   for (let i = 0; i < NC; i++) spawnCloud(i, true);
   cam.position.set(G.P.x, G.P.y + 3.2, G.P.z + CAM_BACK);
   cam.lookAt(G.P.x, G.P.y + 1.2, G.P.z - 25);
@@ -187,6 +277,7 @@ function restart(){
   $('pause').classList.add('h');
   ['sc','di','ms','bb','bo','pb'].forEach(id => $(id).classList.remove('h'));
   slowBtn.style.display = 'block';
+  shootBtn.style.display = 'block';
   say('Round two. Mind the sofas.', 3);
 }
 
@@ -196,6 +287,7 @@ function togglePause(){
     $('pause').classList.remove('h');
     INPUT.boostBtn = false;
     slowHeld = false;
+    shootHeld = false;
   } else if (G.mode === 'pause'){
     G.mode = 'play';
     $('pause').classList.add('h');
@@ -210,7 +302,7 @@ function resetRun(){
   G.P.vx = 0; G.P.vy = 0; G.P.fs = 0; G.P.boost = 0; G.P.meter = 1; G.P.hit = 0; G.P.yaw = 0;
   G.totalDist = 0;
   G.spawnAccum = 0;
-  G.spawnGap = 60;
+  G.spawnGap = 40;
   resetEyeTracker();
   [sl, ob, rg].forEach(a => a.forEach(o => o.visible = false));
   for (let i = 0; i < NC; i++) spawnCloud(i, true);
@@ -228,6 +320,9 @@ function resetRun(){
   resetWeather();
   setCrashed(false);
   slowHeld = false;
+  shootHeld = false;
+  shootCooldown = 0;
+  beams.forEach(b => { b.life = 0; b.line.visible = false; });
 }
 
 initInput(togglePause);
@@ -247,29 +342,38 @@ function tickAurora(){
 
 /* ---------- play step ---------- */
 function play(dt){
+  const trapped = isPlayerTrapped();
+
   let ix = cl(stick.x + ((K.ArrowRight||K.KeyD)?1:0) - ((K.ArrowLeft||K.KeyA)?1:0), -1, 1);
   let iy = cl(stick.y + ((K.ArrowUp||K.KeyW)?1:0) - ((K.ArrowDown||K.KeyS)?1:0), -1, 1);
   if (CFG.inv) iy = -iy;
 
-  const wb = (INPUT.boostBtn || K.Space || K.ShiftLeft) && G.P.meter > .03 && !slowHeld;
+  if (trapped){
+    ix = 0; iy = 0;
+    G.P.fs *= 0.9;
+  }
+
+  const wb = (INPUT.boostBtn || K.Space || K.ShiftLeft) && G.P.meter > .03 && !slowHeld && !trapped;
   G.P.boost += ((wb ? 1 : 0) - G.P.boost) * (1 - Math.exp(-5*dt));
   G.P.meter = cl(G.P.meter + (wb ? -.30 : .10) * dt);
   if (wb && !G.P.wasB) sfx.boost();
   G.P.wasB = wb;
 
-  G.P.yaw += ix * YAW_IN * dt;
+  if (!trapped) G.P.yaw += ix * YAW_IN * dt;
   const fx = Math.sin(G.P.yaw);
   const fz = -Math.cos(G.P.yaw);
 
   const base = 38 + Math.min(22, dist()/90);
 
-  const targetSpeed = slowHeld
+  const targetSpeed = (slowHeld || trapped)
     ? 0
     : base * (1 + G.P.boost * BOOST_MUL) * (G.P.hit > 0 ? .55 : 1);
   G.P.fs += (targetSpeed - G.P.fs) * (1 - Math.exp(-3*dt));
   G.P.hit = Math.max(0, G.P.hit - dt);
 
-  G.P.vy += (iy * 26 * (1 + G.P.boost * .9) - G.P.vy) * (1 - Math.exp(-3*dt));
+  if (!trapped){
+    G.P.vy += (iy * 26 * (1 + G.P.boost * .9) - G.P.vy) * (1 - Math.exp(-3*dt));
+  }
 
   for (const c of cls){
     if (!c.gold) continue;
@@ -282,9 +386,11 @@ function play(dt){
     c.in = i;
   }
 
-  G.P.x += fx * G.P.fs * dt;
-  G.P.y += G.P.vy * dt;
-  G.P.z += fz * G.P.fs * dt;
+  if (!trapped){
+    G.P.x += fx * G.P.fs * dt;
+    G.P.y += G.P.vy * dt;
+    G.P.z += fz * G.P.fs * dt;
+  }
   if (G.P.y < 14){ G.P.y = 14; G.P.vy = Math.max(G.P.vy, 0); }
   G.Q.clean = G.Q.bumps ? Math.max(0, G.Q.clean + G.P.fs*dt) : G.Q.clean + G.P.fs*dt;
   G.alt = G.P.y;
@@ -305,7 +411,7 @@ function play(dt){
       G.P.z + fz * SPAWN_LEAD,
       fx, fz
     );
-    G.spawnGap = Math.max(55, 88 - dist()/150);
+    G.spawnGap = Math.max(35, 65 - dist()/200);
   }
 
   for (const o of sl){
@@ -372,6 +478,9 @@ function play(dt){
       const dx = G.P.x - o.position.x, dy = G.P.y - o.position.y;
       if (dx*dx + dy*dy < 80){
         G.Q.rings++;
+        G.P.boost = Math.min(1, G.P.boost + 0.5);
+        G.P.meter = Math.min(1, G.P.meter + 0.4);
+        G.P.fs += 30;
         say(['Dave: "Showing off now."', 'Dave: "Smooth."', 'Dave: "Nailed it."'][G.Q.rings%3], 1.6);
         sfx.ring();
         G.shake = .3;
@@ -380,6 +489,14 @@ function play(dt){
     const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
     if (behind < -80) o.visible = false;
   }
+
+  /* ---------- Laser shooting ---------- */
+  shootCooldown -= dt;
+  if ((shootHeld || K.KeyX) && shootCooldown <= 0 && !trapped){
+    shootCooldown = 0.35;
+    tryShoot();
+  }
+  tickBeams(dt);
 
   tickPigeon(dt);
   tickBirds(dt);
