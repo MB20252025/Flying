@@ -10,7 +10,7 @@ import { sky, palette } from './sky.js';
 import { gm, ground } from './world/ground.js';
 import { town, laySt } from './world/town.js';
 import { traf, updCars, pedG, updPeds } from './world/traffic.js';
-import { cm, cls, NC, spawnCloud, recycleClouds, attachEyes } from './world/clouds.js';
+import { cm, cls, NC, spawnCloud, recycleClouds, attachEyes, resetEyeTracker } from './world/clouds.js';
 import { sl, ob, rg, pattern, rebuildSlices } from './world/items.js';
 import { dave, animD } from './player/dave.js';
 import { tp, tickTrail } from './player/trail.js';
@@ -22,31 +22,86 @@ import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js'
 import { setPizzaModel } from './pizza.js';
 
 /* ---------- Cloud eyes ---------- */
-const eyeG = [];
-for (let i = 0; i < 16; i++){
+function makeEye(){
   const g = new T.Group();
   for (const sg of [-1,1]){
-    const e = new T.Mesh(new T.SphereGeometry(1,10,8), new T.MeshBasicMaterial({color:0xf6f6ee}));
-    e.position.x = sg * 1.7;
-    e.add(new T.Mesh(new T.SphereGeometry(.45,8,6), new T.MeshBasicMaterial({color:0x111111})));
-    g.add(e);
+    const eyeGroup = new T.Group();
+    eyeGroup.position.x = sg * 1.6;
+
+    // Eye white - smooth sphere
+    const white = new T.Mesh(
+      new T.SphereGeometry(1, 20, 16),
+      new T.MeshBasicMaterial({color:0xf0ede4})
+    );
+    eyeGroup.add(white);
+
+    // Look group - rotates to face the camera
+    const lookAt = new T.Group();
+    lookAt.name = 'lookAt';
+    eyeGroup.add(lookAt);
+
+    // Iris - flattened sphere sitting on the eye surface
+    const iris = new T.Mesh(
+      new T.SphereGeometry(0.5, 20, 12),
+      new T.MeshBasicMaterial({color:0x5a3a1a})
+    );
+    iris.scale.set(1, 1, 0.4);
+    iris.position.z = 0.82;
+    lookAt.add(iris);
+
+    // Pupil - smaller flattened sphere on the iris
+    const pupil = new T.Mesh(
+      new T.SphereGeometry(0.25, 16, 10),
+      new T.MeshBasicMaterial({color:0x050505})
+    );
+    pupil.scale.set(1, 1, 0.5);
+    pupil.position.z = 0.94;
+    lookAt.add(pupil);
+
+    // Glint - small white highlight near the top-left of the pupil
+    const glint = new T.Mesh(
+      new T.CircleGeometry(0.08, 10),
+      new T.MeshBasicMaterial({color:0xffffff, side:T.DoubleSide})
+    );
+    glint.position.set(-0.15, 0.15, 1.02);
+    lookAt.add(glint);
+
+    g.add(eyeGroup);
   }
   g.visible = false;
   g.userData.free = true;
+  return g;
+}
+
+const eyeG = [];
+for (let i = 0; i < 16; i++){
+  const g = makeEye();
   S.add(g);
   eyeG.push(g);
 }
 attachEyes(eyeG);
 
+const _eyePos = new T.Vector3();
+const _eyeDir = new T.Vector3();
+const _zAxis  = new T.Vector3(0, 0, 1);
+
 function updEyes(){
-  const _v = new T.Vector3();
   for (let i = 0; i < NC; i++){
     const g = cls[i].eg;
     if (!g) continue;
-    const d = _v.subVectors(cam.position, g.position).normalize();
-    const bl = Math.sin(G.tt * .8 + i * 3.1) > .975 ? .12 : 1;
+    const bl = Math.sin(G.tt * .8 + i * 3.1) > .98 ? .1 : 1;
     g.scale.y = g.scale.x * bl;
-    g.children.forEach(e => e.children[0].position.copy(d).multiplyScalar(.6));
+    g.children.forEach(eyeGroup => {
+      const lookAt = eyeGroup.getObjectByName('lookAt');
+      if (!lookAt) return;
+      _eyePos.set(
+        g.position.x + eyeGroup.position.x * g.scale.x,
+        g.position.y + eyeGroup.position.y * g.scale.y,
+        g.position.z + eyeGroup.position.z * g.scale.z
+      );
+      _eyeDir.subVectors(cam.position, _eyePos).normalize();
+      lookAt.quaternion.setFromUnitVectors(_zAxis, _eyeDir);
+    });
   }
 }
 
@@ -91,7 +146,7 @@ function startPlay(){
   G.P.z = 51.9;
   G.SZ = G.P.z;
   G.P.fs = 8;
-  // NOTE: do NOT reset G.P.y — Dave should keep his launch altitude
+  // NOTE: do NOT reset G.P.y — Dave keeps his launch altitude
   room.visible = false;
   $('sk').classList.add('h');
   ['sc','di','ms','bb','bo','pb'].forEach(id => $(id).classList.remove('h'));
@@ -121,6 +176,7 @@ function resetRun(){
   G.mi = 0; G.mbase = 0;
   G.P.vx = G.P.vy = 0; G.P.fs = 0; G.P.boost = 0; G.P.meter = 1; G.P.hit = 0;
   G.SZ = G.P.z;
+  resetEyeTracker(G.P.z);
   [sl, ob, rg].forEach(a => a.forEach(o => o.visible = false));
   for (let i = 0; i < NC; i++) spawnCloud(i, true);
   for (let k = 0; k < 5; k++) pattern(G.P.z - 130 - k*85);
@@ -308,7 +364,6 @@ function frame(now){
   }
 
   if (G.mode === 'title'){
-    /* static preview: TV flickers, camera gently sways */
     tickTV(dt, true);
     cam.position.x = 50 + Math.sin(G.tt*.4) * .8;
     cam.position.y = 3.4;
