@@ -22,12 +22,13 @@ import { tickKingKong, resetKingKong } from './kingkong.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
-console.log('%c[MAIN] v7-STEER loaded — yaw enabled, camera tracking (non-rotating)', 'color:#0f0;font-weight:bold;font-size:14px');
+console.log('%c[MAIN] v8-CHASE loaded — yaw capped ±90°, camera follows behind', 'color:#0f0;font-weight:bold;font-size:14px');
 
 const SPAWN_LEAD = 440;
-const YAW_MAX      = Math.PI / 2;     // ±90° steering limit
-const YAW_IN       = 2.0;             // rad/s while held (≈ 90° in 0.8s)
-const YAW_RETURN   = 1.2;             // rad/s auto-straighten
+const YAW_MAX      = Math.PI / 2;
+const YAW_IN       = 2.0;
+const YAW_RETURN   = 1.2;
+const CAM_BACK     = 14;
 
 /* ---------- Diagnostic overlay ---------- */
 let dbgEl = null;
@@ -43,11 +44,11 @@ function ensureDbg(){
     'border:2px solid #0f0;border-radius:6px;' +
     'text-shadow:0 0 4px #0f0';
   dbgEl.innerHTML =
-    'CAM <b style="color:#0ff">v7-STEER</b><br>' +
+    'CAM <b style="color:#0ff">v8-CHASE</b><br>' +
     'Yaw: <span id="dbgY">?</span>°<br>' +
-    'Offset X: <span id="dbgX">?</span><br>' +
-    'Offset Z: <span id="dbgZ">?</span><br>' +
-    'CamAngle: <span id="dbgA" style="font-size:16px">?</span>';
+    'Fwd offset: <span id="dbgF">?</span> (should be -14)<br>' +
+    'Right offset: <span id="dbgR">?</span> (should be 0)<br>' +
+    'Result: <span id="dbgA" style="font-size:15px">?</span>';
   document.body.appendChild(dbgEl);
 }
 ensureDbg();
@@ -180,7 +181,7 @@ function startPlay(){
   G.spawnAccum = 0;
   G.spawnGap = 60;
   for (let i = 0; i < NC; i++) spawnCloud(i, true);
-  cam.position.set(G.P.x, G.P.y + 3.2, G.P.z + 14);
+  cam.position.set(G.P.x, G.P.y + 3.2, G.P.z + CAM_BACK);
   cam.lookAt(G.P.x, G.P.y + 1.2, G.P.z - 25);
 }
 
@@ -290,12 +291,11 @@ function play(dt){
 
   const sp = cl((G.P.fs - 30)/70);
   dave.position.set(G.P.x, G.P.y, G.P.z);
-  /* Dave faces movement direction (his default nose is -Z, so we negate yaw) */
   dave.rotation.y = -G.P.yaw;
   dave.visible = G.P.hit <= 0 || ((G.P.hit*12)|0) % 2 === 0;
   animD(dt, -.4 - .7*sp - .15*G.P.boost + .5*iy, -ix*.6, .3 + .9*G.P.boost + .2*Math.abs(ix), sp, G.tt);
 
-  /* ---------- Spawn items ahead in the CURRENT heading ---------- */
+  /* ---------- Spawn items ahead along current heading ---------- */
   G.spawnAccum += G.P.fs * dt;
   while (G.spawnAccum > G.spawnGap){
     G.spawnAccum -= G.spawnGap;
@@ -383,38 +383,49 @@ function play(dt){
   tickTrail(dt, G.P.boost);
 
   /* ============================================================
-     CAMERA — tracks player position, does NOT rotate.
-     Always faces down world -Z, always offset (0, +3.2, +14).
-     Player turning NEVER changes camera orientation.
+     CAMERA — always behind Dave, following his yaw (±90° max).
+     Because yaw is capped, this can orbit at most 90° then stop.
+     It physically cannot spin 360°.
      ============================================================ */
-  cam.position.set(
-    G.P.x,
-    G.P.y + 3.2,
-    G.P.z + 14
-  );
+  const camX = G.P.x - fx * CAM_BACK;
+  const camY = G.P.y + 3.2;
+  const camZ = G.P.z - fz * CAM_BACK;
+
+  // Snap instantly — no lag — so the camera is always exactly
+  // behind Dave's current heading. If it lagged, you'd see his
+  // side during the swing.
+  cam.position.set(camX, camY, camZ);
   cam.up.set(0, 1, 0);
-  cam.lookAt(G.P.x, G.P.y + 1.2, G.P.z - 25);
+  cam.lookAt(
+    G.P.x + fx * 25,
+    G.P.y + 1.2,
+    G.P.z + fz * 25
+  );
 
   if (cam.fov !== 64){
     cam.fov = 64;
     cam.updateProjectionMatrix();
   }
 
-  /* ---------- Diagnostic readout ---------- */
+  /* ---------- Diagnostic: verify camera sits behind Dave ---------- */
   const offX = cam.position.x - G.P.x;
   const offZ = cam.position.z - G.P.z;
-  const angDeg = Math.atan2(offX, -offZ) * 180 / Math.PI;
-  const yawDeg = G.P.yaw * 180 / Math.PI;
+  const fwdComp   = offX * fx + offZ * fz;            // should be -14
+  const rightX    = Math.cos(G.P.yaw);
+  const rightZ    = Math.sin(G.P.yaw);
+  const rightComp = offX * rightX + offZ * rightZ;    // should be 0
+  const behindOK  = Math.abs(fwdComp + CAM_BACK) < 0.01 && Math.abs(rightComp) < 0.01;
+
   const dbgY = document.getElementById('dbgY');
-  const dbgX = document.getElementById('dbgX');
-  const dbgZ = document.getElementById('dbgZ');
+  const dbgF = document.getElementById('dbgF');
+  const dbgR = document.getElementById('dbgR');
   const dbgA = document.getElementById('dbgA');
   if (dbgY){
-    dbgY.textContent = yawDeg.toFixed(1);
-    dbgX.textContent = offX.toFixed(2);
-    dbgZ.textContent = offZ.toFixed(2);
-    dbgA.textContent = angDeg.toFixed(1) + '°';
-    dbgA.style.color = Math.abs(angDeg) < 1 ? '#0f0' : '#f00';
+    dbgY.textContent = (G.P.yaw * 180 / Math.PI).toFixed(1);
+    dbgF.textContent = fwdComp.toFixed(2);
+    dbgR.textContent = rightComp.toFixed(2);
+    dbgA.textContent = behindOK ? 'BEHIND ✓' : 'OFF ✗';
+    dbgA.style.color = behindOK ? '#0f0' : '#f00';
   }
 
   tickWeather(dt);
