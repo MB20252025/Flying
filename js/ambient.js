@@ -6,30 +6,18 @@ import { sl } from './world/items.js';
 
 function M(c, o){ return new T.MeshLambertMaterial(Object.assign({color:c, fog:false}, o||{})); }
 function MB(c, o){ return new T.MeshBasicMaterial(Object.assign({color:c, fog:false}, o||{})); }
-
+function SH(c){ return new T.MeshLambertMaterial({color:c}); }
 function fwd(){ return { fx: Math.sin(G.P.yaw), fz: -Math.cos(G.P.yaw) }; }
 
 /* ============================================================
-   TORNADO STATE
+   TORNADO
    ============================================================ */
 export const TOR = {
-  trapped: false,
-  phase: 0,
-  angle: 0,
-  radius: 0,
-  height: 0,
-  flingTime: 0,
-  flingVX: 0,
-  flingVZ: 0,
-  flingVY: 0
+  trapped: false, phase: 0, angle: 0, radius: 0, height: 0,
+  flingTime: 0, flingVX: 0, flingVZ: 0, flingVY: 0
 };
-export function isPlayerTrapped(){
-  return TOR.trapped || TOR.flingTime > 0;
-}
+export function isPlayerTrapped(){ return TOR.trapped || TOR.flingTime > 0; }
 
-/* ============================================================
-   WATER TORNADO (unchanged)
-   ============================================================ */
 const wt = new T.Group(); S.add(wt);
 {
   const shellDefs = [
@@ -124,7 +112,7 @@ wt.visible = false;
 let wtA = false, wtT = 0, wtSpin = 0;
 
 /* ============================================================
-   ASTEROID (unchanged)
+   ASTEROID
    ============================================================ */
 const ast = new T.Group(); S.add(ast);
 {
@@ -155,36 +143,21 @@ let astA = false, astT = 0;
 const astVel = new T.Vector3();
 
 /* ============================================================
-   SHARK — realistic great white, smooth tail-sway via shader
+   SHARK — GLB preferred, procedural fallback
    ============================================================ */
+
+/* ---------- Procedural fallback (used while GLB loads or if it fails) ---------- */
 const SHARK_PROFILE = [
-  new T.Vector2(0.05, 0),
-  new T.Vector2(0.20, 0.5),
-  new T.Vector2(0.50, 1.5),
-  new T.Vector2(0.90, 2.8),
-  new T.Vector2(1.50, 4.2),
-  new T.Vector2(2.10, 6.0),
-  new T.Vector2(2.70, 8.0),
-  new T.Vector2(3.30, 10.5),
-  new T.Vector2(3.80, 13.0),
-  new T.Vector2(4.20, 16.0),
-  new T.Vector2(4.50, 19.0),
-  new T.Vector2(4.60, 22.0),
-  new T.Vector2(4.50, 25.0),
-  new T.Vector2(4.20, 28.0),
-  new T.Vector2(3.80, 31.0),
-  new T.Vector2(3.30, 34.0),
-  new T.Vector2(2.70, 37.0),
-  new T.Vector2(2.10, 40.0),
-  new T.Vector2(1.50, 43.0),
-  new T.Vector2(1.00, 46.0),
-  new T.Vector2(0.60, 49.0),
-  new T.Vector2(0.30, 52.0),
-  new T.Vector2(0.10, 54.0)
+  new T.Vector2(0.05, 0), new T.Vector2(0.20, 0.5), new T.Vector2(0.50, 1.5),
+  new T.Vector2(0.90, 2.8), new T.Vector2(1.50, 4.2), new T.Vector2(2.10, 6.0),
+  new T.Vector2(2.70, 8.0), new T.Vector2(3.30, 10.5), new T.Vector2(3.80, 13.0),
+  new T.Vector2(4.20, 16.0), new T.Vector2(4.50, 19.0), new T.Vector2(4.60, 22.0),
+  new T.Vector2(4.50, 25.0), new T.Vector2(4.20, 28.0), new T.Vector2(3.80, 31.0),
+  new T.Vector2(3.30, 34.0), new T.Vector2(2.70, 37.0), new T.Vector2(2.10, 40.0),
+  new T.Vector2(1.50, 43.0), new T.Vector2(1.00, 46.0), new T.Vector2(0.60, 49.0),
+  new T.Vector2(0.30, 52.0), new T.Vector2(0.10, 54.0)
 ];
-const SHARK_LEN = 54;
-const SHARK_HALF = 27;
-const Y_SCALE = 0.72;
+const SHARK_LEN = 54, SHARK_HALF = 27, Y_SCALE = 0.72;
 
 function radiusAtProfile(z){
   const zNorm = (z + SHARK_HALF) / SHARK_LEN;
@@ -196,35 +169,19 @@ function radiusAtProfile(z){
 }
 
 function makeSharkMaterial(){
-  const mat = new T.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.68,
-    metalness: 0.04,
-    flatShading: false
-  });
-
+  const mat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.68, metalness: 0.04 });
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
     shader.uniforms.uBendAmp = { value: 2.2 };
-
-    shader.vertexShader = `
-      uniform float uTime;
-      uniform float uBendAmp;
-      ${shader.vertexShader}
-    `;
-
+    shader.vertexShader = `uniform float uTime;uniform float uBendAmp;${shader.vertexShader}`;
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
-      `
-      vec3 transformed = vec3(position);
-      float tailT = max(0.0, position.z + 5.0) / 32.0;
-      tailT = min(1.0, tailT);
-      tailT = tailT * tailT;
-      float wave = sin(uTime * 4.0 - position.z * 0.18);
-      transformed.x += wave * uBendAmp * tailT;
-      `
+      `vec3 transformed = vec3(position);
+       float tailT = max(0.0, position.z + 5.0) / 32.0;
+       tailT = min(1.0, tailT); tailT = tailT * tailT;
+       float wave = sin(uTime * 4.0 - position.z * 0.18);
+       transformed.x += wave * uBendAmp * tailT;`
     );
-
     mat.userData.shader = shader;
   };
   return mat;
@@ -234,33 +191,22 @@ function bakeBodyColors(geo){
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++){
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
+    const y = pos.getY(i), z = pos.getZ(i);
     const r = radiusAtProfile(z) * Y_SCALE;
     let t = r > 0.001 ? y / r : 0;
     t = Math.max(-1, Math.min(1, t));
-
     let R, G_, B;
     if (t < -0.25){
       const u = Math.min(1, (t + 1) / 0.75);
-      R = 0.94 - (0.94 - 0.86) * u;
-      G_ = 0.92 - (0.92 - 0.87) * u;
-      B = 0.84 - (0.84 - 0.82) * u;
+      R = 0.94 - (0.94-0.86)*u; G_ = 0.92 - (0.92-0.87)*u; B = 0.84 - (0.84-0.82)*u;
     } else if (t < 0.25){
       const u = (t + 0.25) / 0.5;
-      R = 0.86 - (0.86 - 0.55) * u;
-      G_ = 0.87 - (0.87 - 0.60) * u;
-      B = 0.82 - (0.82 - 0.63) * u;
+      R = 0.86 - (0.86-0.55)*u; G_ = 0.87 - (0.87-0.60)*u; B = 0.82 - (0.82-0.63)*u;
     } else {
       const u = (t - 0.25) / 0.75;
-      R = 0.55 - (0.55 - 0.28) * u;
-      G_ = 0.60 - (0.60 - 0.33) * u;
-      B = 0.63 - (0.63 - 0.36) * u;
+      R = 0.55 - (0.55-0.28)*u; G_ = 0.60 - (0.60-0.33)*u; B = 0.63 - (0.63-0.36)*u;
     }
-
-    colors[i*3] = R;
-    colors[i*3+1] = G_;
-    colors[i*3+2] = B;
+    colors[i*3] = R; colors[i*3+1] = G_; colors[i*3+2] = B;
   }
   geo.setAttribute('color', new T.BufferAttribute(colors, 3));
 }
@@ -269,122 +215,68 @@ function bakeFinColors(geo, isDark){
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++){
-    if (isDark){
-      colors[i*3] = 0.32;
-      colors[i*3+1] = 0.37;
-      colors[i*3+2] = 0.41;
-    } else {
-      colors[i*3] = 0.78;
-      colors[i*3+1] = 0.75;
-      colors[i*3+2] = 0.71;
-    }
+    if (isDark){ colors[i*3] = 0.32; colors[i*3+1] = 0.37; colors[i*3+2] = 0.41; }
+    else { colors[i*3] = 0.78; colors[i*3+1] = 0.75; colors[i*3+2] = 0.71; }
   }
   geo.setAttribute('color', new T.BufferAttribute(colors, 3));
 }
 
-function buildShark(){
+function buildProceduralShark(){
   const g = new T.Group();
   const mat = makeSharkMaterial();
 
-  /* --- Body --- */
   const bodyGeo = new T.LatheGeometry(SHARK_PROFILE, 44);
   bodyGeo.rotateX(Math.PI / 2);
   bodyGeo.translate(0, 0, -SHARK_HALF);
   bodyGeo.scale(1, Y_SCALE, 1);
   bakeBodyColors(bodyGeo);
-
   const body = new T.Mesh(bodyGeo, mat);
   body.frustumCulled = false;
   g.add(body);
 
-  /* Helper: build a fin from a 2D shape, extrude, and bake at a fixed world position */
   function addFin(shapePts, extrudeOpts, worldPos, rotY, isDark, mirrorX){
     const shape = new T.Shape();
     shape.moveTo(shapePts[0][0], shapePts[0][1]);
     for (let i = 1; i < shapePts.length; i++) shape.lineTo(shapePts[i][0], shapePts[i][1]);
     shape.closePath();
-
     const geo = new T.ExtrudeGeometry(shape, extrudeOpts);
     geo.translate(0, 0, -(extrudeOpts.depth || 0.3) / 2);
     if (mirrorX) geo.scale(-1, 1, 1);
     geo.rotateY(rotY || Math.PI / 2);
     geo.translate(worldPos.x, worldPos.y, worldPos.z);
     bakeFinColors(geo, isDark);
-
     const m = new T.Mesh(geo, mat);
     m.frustumCulled = false;
     g.add(m);
-    return m;
   }
 
-  /* --- Dorsal fin (large triangular, on top, near mid) --- */
-  addFin(
-    [[0,0],[2,3],[4,6.5],[6,7.8],[8,7],[9,4],[9.5,1],[9.5,0]],
+  addFin([[0,0],[2,3],[4,6.5],[6,7.8],[8,7],[9,4],[9.5,1],[9.5,0]],
     {depth: 0.4, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.2, bevelSegments: 2},
-    {x: -4.75, y: 3.2, z: -2},
-    Math.PI / 2,
-    true, false
-  );
+    {x: -4.75, y: 3.2, z: -2}, Math.PI / 2, true, false);
 
-  /* --- Pectoral fins (2, angled down/out, near head) --- */
   for (const sx of [-1, 1]){
-    addFin(
-      [[0,0],[7,-1.5],[9,-3],[8,-4.5],[4,-3],[1,-1.5]],
+    addFin([[0,0],[7,-1.5],[9,-3],[8,-4.5],[4,-3],[1,-1.5]],
       {depth: 0.3, bevelEnabled: true, bevelThickness: 0.15, bevelSize: 0.15, bevelSegments: 2},
-      {x: sx * 3.5, y: -1.2, z: -8},
-      Math.PI / 2,
-      false, sx < 0
-    );
+      {x: sx * 3.5, y: -1.2, z: -8}, Math.PI / 2, false, sx < 0);
   }
-
-  /* --- Pelvic fins (2, small, under belly near mid) --- */
   for (const sx of [-1, 1]){
-    addFin(
-      [[0,0],[3,-0.5],[4.5,-2],[3.5,-3],[1,-2]],
+    addFin([[0,0],[3,-0.5],[4.5,-2],[3.5,-3],[1,-2]],
       {depth: 0.2, bevelEnabled: false},
-      {x: sx * 2.3, y: -2.8, z: 4},
-      Math.PI / 2,
-      true, sx < 0
-    );
+      {x: sx * 2.3, y: -2.8, z: 4}, Math.PI / 2, true, sx < 0);
   }
-
-  /* --- Second dorsal fin (tiny, top, near tail) --- */
-  addFin(
-    [[0,0],[1,1.5],[2,2],[2.5,1],[2,0]],
+  addFin([[0,0],[1,1.5],[2,2],[2.5,1],[2,0]],
     {depth: 0.2, bevelEnabled: false},
-    {x: -1.25, y: 2, z: 18},
-    Math.PI / 2,
-    true, false
-  );
-
-  /* --- Anal fin (bottom, near tail) --- */
-  addFin(
-    [[0,0],[2,-0.5],[2.5,-2],[1.5,-2.5],[0.5,-1.5]],
+    {x: -1.25, y: 2, z: 18}, Math.PI / 2, true, false);
+  addFin([[0,0],[2,-0.5],[2.5,-2],[1.5,-2.5],[0.5,-1.5]],
     {depth: 0.2, bevelEnabled: false},
-    {x: -1.25, y: -2.3, z: 14},
-    Math.PI / 2,
-    false, false
-  );
-
-  /* --- Tail fin: crescent, upper lobe longer than lower --- */
-  // Upper lobe
-  addFin(
-    [[0,0],[2,3],[5,7],[9,10],[11,9],[10,6],[7,3],[4,1]],
+    {x: -1.25, y: -2.3, z: 14}, Math.PI / 2, false, false);
+  addFin([[0,0],[2,3],[5,7],[9,10],[11,9],[10,6],[7,3],[4,1]],
     {depth: 0.4, bevelEnabled: true, bevelThickness: 0.15, bevelSize: 0.15, bevelSegments: 2},
-    {x: 0, y: 0, z: SHARK_HALF},
-    -Math.PI / 2,
-    true, false
-  );
-  // Lower lobe (shorter)
-  addFin(
-    [[0,0],[3,-2],[6,-5],[7,-5.5],[6,-3],[3,-1]],
+    {x: 0, y: 0, z: SHARK_HALF}, -Math.PI / 2, true, false);
+  addFin([[0,0],[3,-2],[6,-5],[7,-5.5],[6,-3],[3,-1]],
     {depth: 0.4, bevelEnabled: true, bevelThickness: 0.15, bevelSize: 0.15, bevelSegments: 2},
-    {x: 0, y: -0.5, z: SHARK_HALF},
-    -Math.PI / 2,
-    true, false
-  );
+    {x: 0, y: -0.5, z: SHARK_HALF}, -Math.PI / 2, true, false);
 
-  /* --- Gills (5 slits per side) --- */
   for (const sx of [-1, 1]){
     for (let i = 0; i < 5; i++){
       const gz = -15 + i * 1.4;
@@ -399,69 +291,46 @@ function buildShark(){
     }
   }
 
-  /* --- Eyes (small, glossy black, side-mounted) --- */
   for (const sx of [-1, 1]){
     const socket = new T.Mesh(new T.SphereGeometry(0.85, 14, 12), mat);
     socket.position.set(sx * 1.55, 1.4, -21);
     g.add(socket);
-
     const eye = new T.Mesh(
       new T.SphereGeometry(0.62, 18, 16),
       new T.MeshStandardMaterial({color: 0x000000, roughness: 0.12, metalness: 0.7})
     );
     eye.position.set(sx * 1.85, 1.4, -21.4);
     g.add(eye);
-
-    const glint = new T.Mesh(
-      new T.SphereGeometry(0.18, 8, 8),
-      new T.MeshBasicMaterial({color: 0xffffff})
-    );
+    const glint = new T.Mesh(new T.SphereGeometry(0.18, 8, 8), new T.MeshBasicMaterial({color: 0xffffff}));
     glint.position.set(sx * 1.95, 1.6, -21.9);
     g.add(glint);
   }
 
-  /* --- Nostrils (small dimples near snout) --- */
   for (const sx of [-1, 1]){
-    const n = new T.Mesh(
-      new T.SphereGeometry(0.22, 8, 6),
-      new T.MeshStandardMaterial({color: 0x111111, roughness: 0.95})
-    );
+    const n = new T.Mesh(new T.SphereGeometry(0.22, 8, 6), new T.MeshStandardMaterial({color: 0x111111, roughness: 0.95}));
     n.position.set(sx * 0.65, 0.15, -24.5);
     g.add(n);
   }
 
-  /* --- Mouth (under-snout, dark cavity, two tooth rows) --- */
   const mouthGroup = new T.Group();
   mouthGroup.position.set(0, -1.4, -21);
   g.add(mouthGroup);
 
-  // Dark mouth interior
-  const cavity = new T.Mesh(
-    new T.SphereGeometry(1.8, 18, 14),
-    new T.MeshStandardMaterial({color: 0x160404, roughness: 0.95})
-  );
+  const cavity = new T.Mesh(new T.SphereGeometry(1.8, 18, 14), new T.MeshStandardMaterial({color: 0x160404, roughness: 0.95}));
   cavity.scale.set(1.4, 0.45, 1.1);
   cavity.position.set(0, -0.2, -2.8);
   mouthGroup.add(cavity);
 
-  // Upper jaw teeth — arc under snout
   for (let i = 0; i < 14; i++){
     const t = i / 13;
     const angle = (t - 0.5) * Math.PI * 0.9;
-    const tooth = new T.Mesh(
-      new T.ConeGeometry(0.16, 0.55, 5),
-      new T.MeshStandardMaterial({color: 0xf2ecdc, roughness: 0.5})
-    );
-    tooth.position.set(
-      Math.sin(angle) * 1.55,
-      -0.55,
-      Math.cos(angle) * -0.7 - 2.6
-    );
+    const tooth = new T.Mesh(new T.ConeGeometry(0.16, 0.55, 5),
+      new T.MeshStandardMaterial({color: 0xf2ecdc, roughness: 0.5}));
+    tooth.position.set(Math.sin(angle) * 1.55, -0.55, Math.cos(angle) * -0.7 - 2.6);
     tooth.rotation.x = Math.PI;
     mouthGroup.add(tooth);
   }
 
-  // Lower jaw — pivoting group with curved jaw mesh + teeth
   const jawPivot = new T.Group();
   jawPivot.position.set(0, -0.4, -1.4);
   mouthGroup.add(jawPivot);
@@ -474,37 +343,95 @@ function buildShark(){
   for (let i = 0; i < 14; i++){
     const t = i / 13;
     const angle = (t - 0.5) * Math.PI * 0.9;
-    const tooth = new T.Mesh(
-      new T.ConeGeometry(0.15, 0.5, 5),
-      new T.MeshStandardMaterial({color: 0xf2ecdc, roughness: 0.5})
-    );
-    tooth.position.set(
-      Math.sin(angle) * 1.4,
-      0.15,
-      Math.cos(angle) * -0.7 - 1.2
-    );
+    const tooth = new T.Mesh(new T.ConeGeometry(0.15, 0.5, 5),
+      new T.MeshStandardMaterial({color: 0xf2ecdc, roughness: 0.5}));
+    tooth.position.set(Math.sin(angle) * 1.4, 0.15, Math.cos(angle) * -0.7 - 1.2);
     jawPivot.add(tooth);
   }
 
   g.scale.setScalar(1.3);
   g.userData = { material: mat, jawPivot, mouthGroup };
-
-  /* Prevent frustum culling issues on shader-displaced vertices */
   g.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
-
   return g;
 }
 
+/* ---------- Pool: procedural fallback + async GLB override ---------- */
+const SHARK_GLB_TARGET_LEN = 55;
+
 const sharkPool = [];
 for (let i = 0; i < 3; i++){
-  const obj = buildShark();
+  const obj = new T.Group();
   obj.visible = false;
   S.add(obj);
-  sharkPool.push({ obj, active: false, phase: 0, life: 0, target: null });
+
+  const procedural = buildProceduralShark();
+  obj.add(procedural);
+
+  const slot = {
+    obj,
+    procedural,
+    glb: null,
+    mixer: null,
+    useGLB: false,
+    active: false,
+    phase: 0,
+    life: 0,
+    target: null
+  };
+  sharkPool.push(slot);
+
+  /* Load GLB for this slot */
+  new T.GLTFLoader().load(
+    'assets/shark.glb',
+    (gltf) => {
+      try {
+        const scene = gltf.scene;
+
+        /* Normalise size to target length */
+        const box = new T.Box3().setFromObject(scene);
+        const size = box.getSize(new T.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale = SHARK_GLB_TARGET_LEN / maxDim;
+        scene.scale.setScalar(scale);
+
+        /* Face our game's forward direction (-Z) */
+        scene.rotation.y = Math.PI;
+
+        /* Disable frustum culling on skinned meshes */
+        scene.traverse(o => {
+          if (o.isMesh || o.isSkinnedMesh) o.frustumCulled = false;
+        });
+
+        /* Hide procedural, add GLB */
+        procedural.visible = false;
+        obj.add(scene);
+        slot.glb = scene;
+        slot.useGLB = true;
+
+        /* Set up animation mixer if animations exist */
+        if (gltf.animations && gltf.animations.length > 0){
+          const mixer = new T.AnimationMixer(scene);
+          const clip = gltf.animations[0];
+          const action = mixer.clipAction(clip);
+          action.setLoop(T.LoopRepeat);
+          action.play();
+          slot.mixer = mixer;
+        }
+
+        console.log('[SHARK] GLB loaded for slot', i, 'anims:', gltf.animations?.length || 0);
+      } catch (e){
+        console.warn('[SHARK] GLB setup failed for slot', i, e);
+      }
+    },
+    undefined,
+    (err) => {
+      console.warn('[SHARK] GLB load failed for slot', i, '— procedural fallback stays', err);
+    }
+  );
 }
 
 /* ============================================================
-   DRAGON — spikes, bigger, hinged wings
+   DRAGON (unchanged procedural)
    ============================================================ */
 function buildDragon(){
   const g = new T.Group();
@@ -555,11 +482,9 @@ function buildDragon(){
     const socket = new T.Mesh(new T.SphereGeometry(1.1, 10, 8), redD);
     socket.position.set(sx * 2.3, 0.8, -7.5);
     g.add(socket);
-
     const eye = new T.Mesh(new T.SphereGeometry(0.85, 12, 10), MB(0xffcc00));
     eye.position.set(sx * 2.5, 0.8, -8.2);
     g.add(eye);
-
     const pup = new T.Mesh(new T.BoxGeometry(0.35, 1, 0.5), MB(0x000000));
     pup.position.set(sx * 2.6, 0.8, -8.7);
     g.add(pup);
@@ -578,25 +503,17 @@ function buildDragon(){
     g.add(horn);
   }
 
-  /* Wings — inner + outer hinged */
   const wl = new T.Group(); wl.position.set(-2.5, 1, 0);
   {
     const inner = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
-    inner.rotation.x = -Math.PI / 2;
-    inner.position.x = -4;
+    inner.rotation.x = -Math.PI / 2; inner.position.x = -4;
     inner.material.side = T.DoubleSide;
     wl.add(inner);
-
-    const outerPivot = new T.Group();
-    outerPivot.position.x = -8;
-    wl.add(outerPivot);
-
+    const outerPivot = new T.Group(); outerPivot.position.x = -8; wl.add(outerPivot);
     const outer = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
-    outer.rotation.x = -Math.PI / 2;
-    outer.position.x = -4;
+    outer.rotation.x = -Math.PI / 2; outer.position.x = -4;
     outer.material.side = T.DoubleSide;
     outerPivot.add(outer);
-
     wl.userData.outerPivot = outerPivot;
   }
   g.add(wl);
@@ -604,21 +521,14 @@ function buildDragon(){
   const wr = new T.Group(); wr.position.set(2.5, 1, 0);
   {
     const inner = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
-    inner.rotation.x = -Math.PI / 2;
-    inner.position.x = 4;
+    inner.rotation.x = -Math.PI / 2; inner.position.x = 4;
     inner.material.side = T.DoubleSide;
     wr.add(inner);
-
-    const outerPivot = new T.Group();
-    outerPivot.position.x = 8;
-    wr.add(outerPivot);
-
+    const outerPivot = new T.Group(); outerPivot.position.x = 8; wr.add(outerPivot);
     const outer = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
-    outer.rotation.x = -Math.PI / 2;
-    outer.position.x = 4;
+    outer.rotation.x = -Math.PI / 2; outer.position.x = 4;
     outer.material.side = T.DoubleSide;
     outerPivot.add(outer);
-
     wr.userData.outerPivot = outerPivot;
   }
   g.add(wr);
@@ -652,12 +562,8 @@ for (let i = 0; i < 3; i++){
   obj.visible = false;
   S.add(obj);
   dragonPool.push({
-    obj,
-    active: false,
-    phase: 0,
-    life: 0,
-    fireCooldown: 1 + Math.random() * 2,
-    fireBurstTime: 0
+    obj, active: false, phase: 0, life: 0,
+    fireCooldown: 1 + Math.random() * 2, fireBurstTime: 0
   });
 }
 
@@ -674,14 +580,9 @@ const oct = new T.Group(); S.add(oct);
   const white  = MB(0xffffff);
 
   const body = new T.Mesh(new T.SphereGeometry(45, 24, 18), pur);
-  body.scale.set(1.2, 1.4, 1.1);
-  body.position.y = 280;
-  oct.add(body);
-
+  body.scale.set(1.2, 1.4, 1.1); body.position.y = 280; oct.add(body);
   const mantle = new T.Mesh(new T.SphereGeometry(38, 20, 14), purD);
-  mantle.scale.set(1.05, 0.7, 1.05);
-  mantle.position.y = 320;
-  oct.add(mantle);
+  mantle.scale.set(1.05, 0.7, 1.05); mantle.position.y = 320; oct.add(mantle);
 
   for (let i = 0; i < 10; i++){
     const a = (i / 10) * Math.PI * 2;
@@ -692,18 +593,13 @@ const oct = new T.Group(); S.add(oct);
 
   for (const sx of [-1, 1]){
     const socket = new T.Mesh(new T.SphereGeometry(13, 14, 12), purD);
-    socket.position.set(sx * 18, 288, 32);
-    oct.add(socket);
+    socket.position.set(sx * 18, 288, 32); oct.add(socket);
     const eye = new T.Mesh(new T.SphereGeometry(10, 16, 14), yellow);
-    eye.position.set(sx * 18, 288, 38);
-    oct.add(eye);
+    eye.position.set(sx * 18, 288, 38); oct.add(eye);
     const pup = new T.Mesh(new T.BoxGeometry(2.5, 12, 4), black);
-    pup.position.set(sx * 18, 288, 45);
-    oct.add(pup);
+    pup.position.set(sx * 18, 288, 45); oct.add(pup);
     const brow = new T.Mesh(new T.BoxGeometry(22, 4.5, 5), purD);
-    brow.position.set(sx * 18, 302, 40);
-    brow.rotation.z = sx * 0.4;
-    oct.add(brow);
+    brow.position.set(sx * 18, 302, 40); brow.rotation.z = sx * 0.4; oct.add(brow);
   }
 
   const mouthMesh = new T.Mesh(new T.SphereGeometry(11, 16, 10), mouth);
@@ -713,33 +609,21 @@ const oct = new T.Group(); S.add(oct);
 
   for (let i = 0; i < 8; i++){
     const t = new T.Mesh(new T.ConeGeometry(2, 5.5, 4), white);
-    t.position.set(-14 + i * 4, 260, 41);
-    t.rotation.x = Math.PI;
-    oct.add(t);
+    t.position.set(-14 + i * 4, 260, 41); t.rotation.x = Math.PI; oct.add(t);
   }
   for (let i = 0; i < 7; i++){
     const t = new T.Mesh(new T.ConeGeometry(2, 5, 4), white);
-    t.position.set(-12 + i * 4, 252, 41);
-    oct.add(t);
+    t.position.set(-12 + i * 4, 252, 41); oct.add(t);
   }
 
   const tentacles = [];
   for (let i = 0; i < 8; i++){
     const a = (i / 8) * Math.PI * 2;
-    const attachX = Math.cos(a) * 28;
-    const attachZ = Math.sin(a) * 28;
-
-    const grp = new T.Group();
-    grp.position.set(attachX, 224, attachZ);
-    oct.add(grp);
-
-    const outMidX = Math.cos(a) * 20;
-    const outMidZ = Math.sin(a) * 20;
-    const outFarX = Math.cos(a) * 55;
-    const outFarZ = Math.sin(a) * 55;
-    const curlX = Math.cos(a) * 40;
-    const curlZ = Math.sin(a) * 40;
-
+    const attachX = Math.cos(a) * 28, attachZ = Math.sin(a) * 28;
+    const grp = new T.Group(); grp.position.set(attachX, 224, attachZ); oct.add(grp);
+    const outMidX = Math.cos(a) * 20, outMidZ = Math.sin(a) * 20;
+    const outFarX = Math.cos(a) * 55, outFarZ = Math.sin(a) * 55;
+    const curlX = Math.cos(a) * 40, curlZ = Math.sin(a) * 40;
     const curve = new T.CatmullRomCurve3([
       new T.Vector3(0, 0, 0),
       new T.Vector3(outMidX * 0.35, -35, outMidZ * 0.35),
@@ -749,7 +633,6 @@ const oct = new T.Group(); S.add(oct);
     ]);
     const geo = new T.TubeGeometry(curve, 40, 6.5, 8, false);
     grp.add(new T.Mesh(geo, pur));
-
     for (let k = 0; k < 6; k++){
       const t = 0.15 + (k / 6) * 0.75;
       const p = curve.getPoint(t);
@@ -757,7 +640,6 @@ const oct = new T.Group(); S.add(oct);
       s.position.copy(p).add(new T.Vector3(0, 2.5, 0));
       grp.add(s);
     }
-
     tentacles.push({ grp, phase: i * 0.5, baseAngle: a });
   }
 
@@ -771,10 +653,8 @@ let octA = false, octT = 0;
    ============================================================ */
 const explosions = [];
 function spawnExplosion(pos, color){
-  const m = new T.Mesh(
-    new T.SphereGeometry(1, 10, 8),
-    MB(color || 0xffaa00, {transparent:true, opacity:0.9, depthWrite:false, blending:T.AdditiveBlending})
-  );
+  const m = new T.Mesh(new T.SphereGeometry(1, 10, 8),
+    MB(color || 0xffaa00, {transparent:true, opacity:0.9, depthWrite:false, blending:T.AdditiveBlending}));
   m.position.copy(pos);
   S.add(m);
   explosions.push({ mesh: m, life: 0.6, maxLife: 0.6 });
@@ -791,14 +671,13 @@ function tickExplosions(dt){
       continue;
     }
     const t = 1 - e.life / e.maxLife;
-    const sc = 5 + t * 45;
-    e.mesh.scale.setScalar(sc);
+    e.mesh.scale.setScalar(5 + t * 45);
     e.mesh.material.opacity = (1 - t) * 0.9;
   }
 }
 
 /* ============================================================
-   SHOOTING API
+   SHOOTING
    ============================================================ */
 export function getShootableTargets(){
   const out = [];
@@ -827,9 +706,7 @@ function findNearestSlice(pos){
   let best = null, bestD = 1e9;
   for (const s of sl){
     if (!s.visible) continue;
-    const dx = s.position.x - pos.x;
-    const dy = s.position.y - pos.y;
-    const dz = s.position.z - pos.z;
+    const dx = s.position.x - pos.x, dy = s.position.y - pos.y, dz = s.position.z - pos.z;
     const d = dx*dx + dy*dy + dz*dz;
     if (d < bestD){ bestD = d; best = s; }
   }
@@ -884,18 +761,9 @@ function spawnDragon(){
    ============================================================ */
 function tickTornado(dt){
   if (!wtA) return;
-
-  wtT += dt;
-  wtSpin += dt * 4;
-  wt.rotation.y = wtSpin;
-
+  wtT += dt; wtSpin += dt * 4; wt.rotation.y = wtSpin;
   const u = wt.userData;
-
-  u.shells.forEach((s, i) => {
-    s.rotation.y = wtSpin * (1 + i * 0.4);
-    s.material.opacity = s.material.opacity * 0.98 + 0.001;
-  });
-
+  u.shells.forEach((s, i) => { s.rotation.y = wtSpin * (1 + i * 0.4); });
   for (let i = 0; i < u.NSP; i++){
     u.spT[i] += dt * 0.22;
     if (u.spT[i] > 1) u.spT[i] -= 1;
@@ -907,12 +775,8 @@ function tickTornado(dt){
     u.spPos[i*3 + 2] = Math.sin(u.spA[i]) * r;
   }
   u.spGeo.attributes.position.needsUpdate = true;
-
   for (let i = 0; i < u.NSPRAY; i++){
-    const px = u.sprayPos[i*3];
-    const py = u.sprayPos[i*3 + 1];
-    const pz = u.sprayPos[i*3 + 2];
-
+    const px = u.sprayPos[i*3], py = u.sprayPos[i*3 + 1], pz = u.sprayPos[i*3 + 2];
     if (py < 0 || py > 90){
       if (Math.random() < 0.08){
         const angle = Math.random() * Math.PI * 2;
@@ -929,44 +793,31 @@ function tickTornado(dt){
     }
   }
   u.sprayGeo.attributes.position.needsUpdate = true;
-
-  const dx = G.P.x - wt.position.x;
-  const dz = G.P.z - wt.position.z;
+  const dx = G.P.x - wt.position.x, dz = G.P.z - wt.position.z;
   const d = Math.hypot(dx, dz) || 1;
 
   if (TOR.trapped){
-    TOR.phase += dt;
-    TOR.angle += dt * 6;
+    TOR.phase += dt; TOR.angle += dt * 6;
     TOR.radius = Math.max(8, TOR.radius - dt * 18);
     TOR.height = Math.min(250, TOR.height + dt * 50);
-
     G.P.x = wt.position.x + Math.cos(TOR.angle) * TOR.radius;
     G.P.z = wt.position.z + Math.sin(TOR.angle) * TOR.radius;
-    G.P.y = TOR.height;
-    G.P.vy = 0;
-    G.P.fs = 0;
-
+    G.P.y = TOR.height; G.P.vy = 0; G.P.fs = 0;
     if (TOR.phase > 2.5){
-      TOR.trapped = false;
-      TOR.flingTime = 1.2;
+      TOR.trapped = false; TOR.flingTime = 1.2;
       TOR.flingVX = Math.cos(TOR.angle) * 500;
       TOR.flingVZ = Math.sin(TOR.angle) * 500;
       TOR.flingVY = 200;
       say('Dave: "WHHHOOOAAA!"', 2);
     }
   } else if (d < 60 && G.P.y < 320){
-    TOR.trapped = true;
-    TOR.phase = 0;
-    TOR.angle = Math.atan2(dz, dx);
-    TOR.radius = d;
-    TOR.height = G.P.y;
+    TOR.trapped = true; TOR.phase = 0;
+    TOR.angle = Math.atan2(dz, dx); TOR.radius = d; TOR.height = G.P.y;
     say('Dave: "OH NO—"', 1.2);
   } else if (d < 220 && G.P.y < 360){
     const pull = ((220 - d) / 220) * 500;
-    G.P.x -= (dx / d) * pull * dt;
-    G.P.z -= (dz / d) * pull * dt;
+    G.P.x -= (dx / d) * pull * dt; G.P.z -= (dz / d) * pull * dt;
   }
-
   if (wtT > 22){ wt.visible = false; wtA = false; TOR.trapped = false; TOR.flingTime = 0; }
 }
 
@@ -977,19 +828,14 @@ function tickAsteroid(dt){
   ast.position.y += astVel.y * dt;
   ast.position.z += astVel.z * dt;
   const u = ast.userData;
-  u.main.rotation.x += dt * 0.3;
-  u.main.rotation.y += dt * 0.2;
-
+  u.main.rotation.x += dt * 0.3; u.main.rotation.y += dt * 0.2;
   for (let i = u.NAT - 1; i > 0; i--){
-    u.atPos[i*3]     = u.atPos[(i-1)*3];
+    u.atPos[i*3] = u.atPos[(i-1)*3];
     u.atPos[i*3 + 1] = u.atPos[(i-1)*3 + 1];
     u.atPos[i*3 + 2] = u.atPos[(i-1)*3 + 2];
   }
-  u.atPos[0] = ast.position.x;
-  u.atPos[1] = ast.position.y;
-  u.atPos[2] = ast.position.z + 60;
+  u.atPos[0] = ast.position.x; u.atPos[1] = ast.position.y; u.atPos[2] = ast.position.z + 60;
   u.atGeo.attributes.position.needsUpdate = true;
-
   if (astT > 1.5 && astT < 3.5) G.shake = Math.max(G.shake, 1.2);
   if (astT > 6){ ast.visible = false; astA = false; }
 }
@@ -1000,14 +846,16 @@ function tickSharks(dt){
     s.life -= dt;
     s.phase += dt;
 
-    /* Update shader uniform → tail sway */
-    const shader = s.obj.userData.material.userData.shader;
-    if (shader) shader.uniforms.uTime.value = s.phase;
+    /* Animate: GLB uses mixer, procedural uses shader + jaw */
+    if (s.useGLB){
+      if (s.mixer) s.mixer.update(dt);
+    } else {
+      const shader = s.procedural.userData.material.userData.shader;
+      if (shader) shader.uniforms.uTime.value = s.phase;
+      s.procedural.userData.jawPivot.rotation.x = -Math.abs(Math.sin(s.phase * 1.5)) * 0.22 - 0.03;
+    }
 
-    /* Subtle jaw chomp */
-    s.obj.userData.jawPivot.rotation.x = -Math.abs(Math.sin(s.phase * 1.5)) * 0.22 - 0.03;
-
-    /* Target management */
+    /* Target */
     if (!s.target || !s.target.visible) s.target = findNearestSlice(s.obj.position);
 
     let targetYaw = s.obj.rotation.y;
@@ -1031,27 +879,21 @@ function tickSharks(dt){
         s.obj.position.z += (dz/d) * desiredSpeed * dt;
       }
     } else {
-      /* Drift in local facing direction */
       const fwdX = Math.sin(s.obj.rotation.y);
       const fwdZ = Math.cos(s.obj.rotation.y);
       s.obj.position.x += fwdX * 15 * dt;
       s.obj.position.z += fwdZ * 15 * dt;
     }
 
-    /* Smooth yaw rotation — no snapping */
+    /* Smooth yaw */
     let yawDiff = targetYaw - s.obj.rotation.y;
     while (yawDiff > Math.PI)  yawDiff -= Math.PI * 2;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+    const maxRot = 2.5 * dt;
+    if (Math.abs(yawDiff) < maxRot) s.obj.rotation.y = targetYaw;
+    else s.obj.rotation.y += Math.sign(yawDiff) * maxRot;
 
-    const rotSpeed = 2.5;
-    const maxRot = rotSpeed * dt;
-    if (Math.abs(yawDiff) < maxRot){
-      s.obj.rotation.y = targetYaw;
-    } else {
-      s.obj.rotation.y += Math.sign(yawDiff) * maxRot;
-    }
-
-    /* Banking on turns */
+    /* Banking */
     const targetRoll = -Math.sign(yawDiff) * Math.min(Math.abs(yawDiff), 0.35);
     s.obj.rotation.z += (targetRoll - s.obj.rotation.z) * Math.min(1, dt * 3);
 
@@ -1064,16 +906,12 @@ function tickDragons(dt){
     if (!d.active) continue;
     d.life -= dt;
     d.phase += dt;
-
     const u = d.obj.userData;
 
     const flap        = Math.sin(d.phase * 5) * 0.5;
     const flapDelayed = Math.sin(d.phase * 5 - 0.7) * 0.4;
-
-    u.wl.rotation.z = flap;
-    u.wlOuterPivot.rotation.z = flapDelayed;
-    u.wr.rotation.z = -flap;
-    u.wrOuterPivot.rotation.z = -flapDelayed;
+    u.wl.rotation.z = flap; u.wlOuterPivot.rotation.z = flapDelayed;
+    u.wr.rotation.z = -flap; u.wrOuterPivot.rotation.z = -flapDelayed;
 
     u.pieces.forEach((s, i) => {
       s.position.y = Math.sin(d.phase * 2.5 + i * 0.4) * 2;
@@ -1095,7 +933,7 @@ function tickDragons(dt){
       for (let i = 0; i < u.NDRF; i++){
         const v = u.drfV[i];
         if (v.life <= 0 && Math.random() < 0.5){
-          u.drfPos[i*3]     = d.obj.position.x;
+          u.drfPos[i*3] = d.obj.position.x;
           u.drfPos[i*3 + 1] = d.obj.position.y;
           u.drfPos[i*3 + 2] = d.obj.position.z + 20;
           v.x = (Math.random()-0.5) * 30;
@@ -1106,17 +944,14 @@ function tickDragons(dt){
       }
     } else {
       d.fireCooldown -= dt;
-      if (d.fireCooldown <= 0){
-        d.fireBurstTime = 1.2;
-        d.fireCooldown = 2.5 + Math.random() * 2.5;
-      }
+      if (d.fireCooldown <= 0){ d.fireBurstTime = 1.2; d.fireCooldown = 2.5 + Math.random() * 2.5; }
     }
 
     for (let i = 0; i < u.NDRF; i++){
       const v = u.drfV[i];
       if (v.life > 0){
         v.life -= dt;
-        u.drfPos[i*3]     += v.x * dt;
+        u.drfPos[i*3] += v.x * dt;
         u.drfPos[i*3 + 1] += v.y * dt;
         u.drfPos[i*3 + 2] += v.z * dt;
         if (v.life <= 0) u.drfPos[i*3 + 1] = -99999;
@@ -1128,7 +963,6 @@ function tickDragons(dt){
       d.obj.position.x -= (dx/dl) * 40 * dt;
       d.obj.position.z -= (dz/dl) * 40 * dt;
     }
-
     if (d.life <= 0){ d.active = false; d.obj.visible = false; }
   }
 }
@@ -1137,47 +971,42 @@ function tickOctopus(dt){
   if (!octA) return;
   octT += dt;
   const u = oct.userData;
-
   u.tentacles.forEach((t, i) => {
     t.grp.rotation.y = Math.sin(octT * 0.7 + i * 0.8) * 0.35;
     t.grp.rotation.x = Math.cos(octT * 0.6 + i * 0.8) * 0.12;
     t.grp.rotation.z = Math.sin(octT * 0.9 + i * 1.2) * 0.10;
   });
-
   u.body.rotation.y = Math.sin(octT * 0.4) * 0.08;
   u.mouth.scale.y = 0.7 + Math.abs(Math.sin(octT * 2)) * 0.3;
-
   if (octT > 25){ oct.visible = false; octA = false; }
 }
 
 /* ============================================================
    MASTER TIMERS
    ============================================================ */
-let spawnT = 8;
-let sharkTimer = 4;
-let dragonTimer = 6;
+let spawnT = 8, sharkTimer = 4, dragonTimer = 6;
 
 export function resetAmbient(){
-  wt.visible = false;  wtA = false;  wtT = 0; wtSpin = 0;
+  wt.visible = false; wtA = false; wtT = 0; wtSpin = 0;
   TOR.trapped = false; TOR.flingTime = 0; TOR.phase = 0;
-
   ast.visible = false; astA = false; astT = 0;
 
-  sharkPool.forEach(s => { s.active = false; s.obj.visible = false; s.target = null; });
+  sharkPool.forEach(s => {
+    s.active = false;
+    s.obj.visible = false;
+    s.target = null;
+    if (s.mixer){ s.mixer.stopAllAction(); s.mixer.setTime(0); }
+  });
   dragonPool.forEach(d => { d.active = false; d.obj.visible = false; });
 
   oct.visible = false; octA = false; octT = 0;
 
   explosions.slice().forEach(e => {
-    S.remove(e.mesh);
-    e.mesh.geometry.dispose();
-    e.mesh.material.dispose();
+    S.remove(e.mesh); e.mesh.geometry.dispose(); e.mesh.material.dispose();
   });
   explosions.length = 0;
 
-  spawnT = 8;
-  sharkTimer = 4;
-  dragonTimer = 6;
+  spawnT = 8; sharkTimer = 4; dragonTimer = 6;
 }
 
 function pickOne(){
@@ -1191,8 +1020,7 @@ function pickOne(){
 
   const { fx, fz } = fwd();
   const d = 400 + Math.random() * 300;
-  const ax = G.P.x + fx * d;
-  const az = G.P.z + fz * d;
+  const ax = G.P.x + fx * d, az = G.P.z + fz * d;
 
   if (e === 'wt'){
     wt.position.set(ax, 0, az);
@@ -1223,10 +1051,7 @@ export function tickAmbient(dt){
   if (G.mode !== 'play') return;
 
   spawnT -= dt;
-  if (spawnT <= 0){
-    pickOne();
-    spawnT = 10 + Math.random() * 15;
-  }
+  if (spawnT <= 0){ pickOne(); spawnT = 10 + Math.random() * 15; }
 
   sharkTimer -= dt;
   if (sharkTimer <= 0){
@@ -1256,4 +1081,4 @@ export function tickAmbient(dt){
   tickDragons(dt);
   tickOctopus(dt);
   tickExplosions(dt);
-}
+                                               }
