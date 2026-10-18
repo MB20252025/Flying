@@ -22,35 +22,35 @@ import { tickKingKong, resetKingKong } from './kingkong.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
-console.log('%c[MAIN] v9-FREE loaded — unlimited yaw, no auto-up, superman boost', 'color:#0f0;font-weight:bold;font-size:14px');
+console.log('%c[MAIN] v10-SLOW-SUN loaded', 'color:#0f0;font-weight:bold;font-size:14px');
 
 const SPAWN_LEAD = 440;
-const YAW_IN     = 2.0;               // rad/s — free turning, no cap, no return
+const YAW_IN     = 2.0;
 const CAM_BACK   = 14;
-const BOOST_MUL  = 2.0;               // forward speed × (1 + boost*2) ≈ 3× at full boost
+const BOOST_MUL  = 4.0;
 
-/* ---------- Diagnostic overlay ---------- */
-let dbgEl = null;
-function ensureDbg(){
-  if (dbgEl) return;
-  dbgEl = document.createElement('div');
-  dbgEl.id = 'camdbg';
-  dbgEl.style.cssText =
-    'position:fixed;top:8px;left:8px;' +
-    'background:rgba(0,20,0,.92);color:#0f0;' +
-    'font:13px/1.4 monospace;padding:8px 12px;' +
-    'z-index:99999;pointer-events:none;' +
-    'border:2px solid #0f0;border-radius:6px;' +
-    'text-shadow:0 0 4px #0f0';
-  dbgEl.innerHTML =
-    'CAM <b style="color:#0ff">v9-FREE</b><br>' +
-    'Yaw: <span id="dbgY">?</span>°<br>' +
-    'Fwd offset: <span id="dbgF">?</span><br>' +
-    'Speed: <span id="dbgS">?</span><br>' +
-    'Result: <span id="dbgA" style="font-size:15px">?</span>';
-  document.body.appendChild(dbgEl);
-}
-ensureDbg();
+/* ---------- Slow-down button (created dynamically) ---------- */
+const slowBtn = document.createElement('button');
+slowBtn.id = 'sb';
+slowBtn.className = 'hb h';
+slowBtn.textContent = '🐢';
+slowBtn.style.cssText =
+  'position:fixed;bottom:max(14px,env(safe-area-inset-bottom));left:14px;' +
+  'width:86px;height:86px;border-radius:50%;padding:0;' +
+  'z-index:4;pointer-events:auto;font:700 34px system-ui,sans-serif;' +
+  'border:2px solid #fff8;background:#ffffff26;color:#fff;' +
+  'backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);' +
+  'display:none';
+document.body.appendChild(slowBtn);
+
+let slowHeld = false;
+slowBtn.addEventListener('pointerdown', e => {
+  slowHeld = true;
+  try { slowBtn.setPointerCapture(e.pointerId); } catch(_) {}
+});
+['pointerup','pointercancel','pointerleave'].forEach(n =>
+  slowBtn.addEventListener(n, () => { slowHeld = false; })
+);
 
 /* ---------- Cloud eyes ---------- */
 function makeEye(){
@@ -58,17 +58,14 @@ function makeEye(){
   for (const sg of [-1,1]){
     const eyeGroup = new T.Group();
     eyeGroup.position.x = sg * 1.6;
-
     const white = new T.Mesh(
       new T.SphereGeometry(1, 20, 16),
       new T.MeshBasicMaterial({color:0xf0ede4})
     );
     eyeGroup.add(white);
-
     const lookAt = new T.Group();
     lookAt.name = 'lookAt';
     eyeGroup.add(lookAt);
-
     const iris = new T.Mesh(
       new T.SphereGeometry(0.5, 20, 12),
       new T.MeshBasicMaterial({color:0x5a3a1a})
@@ -76,7 +73,6 @@ function makeEye(){
     iris.scale.set(1, 1, 0.4);
     iris.position.z = 0.82;
     lookAt.add(iris);
-
     const pupil = new T.Mesh(
       new T.SphereGeometry(0.25, 16, 10),
       new T.MeshBasicMaterial({color:0x050505})
@@ -84,14 +80,12 @@ function makeEye(){
     pupil.scale.set(1, 1, 0.5);
     pupil.position.z = 0.94;
     lookAt.add(pupil);
-
     const glint = new T.Mesh(
       new T.CircleGeometry(0.08, 10),
       new T.MeshBasicMaterial({color:0xffffff, side:T.DoubleSide})
     );
     glint.position.set(-0.15, 0.15, 1.02);
     lookAt.add(glint);
-
     g.add(eyeGroup);
   }
   g.visible = false;
@@ -176,6 +170,7 @@ function startPlay(){
   room.visible = false;
   $('sk').classList.add('h');
   ['sc','di','ms','bb','bo','pb'].forEach(id => $(id).classList.remove('h'));
+  slowBtn.style.display = 'block';
   say('RIGHT THEN, DAVE. WHERE TO?', 4.5);
   G.spawnAccum = 0;
   G.spawnGap = 60;
@@ -191,12 +186,21 @@ function restart(){
   G.mode = 'play';
   $('pause').classList.add('h');
   ['sc','di','ms','bb','bo','pb'].forEach(id => $(id).classList.remove('h'));
+  slowBtn.style.display = 'block';
   say('Round two. Mind the sofas.', 3);
 }
 
 function togglePause(){
-  if (G.mode === 'play'){ G.mode = 'pause'; $('pause').classList.remove('h'); INPUT.boostBtn = false; }
-  else if (G.mode === 'pause'){ G.mode = 'play'; $('pause').classList.add('h'); last = performance.now(); }
+  if (G.mode === 'play'){
+    G.mode = 'pause';
+    $('pause').classList.remove('h');
+    INPUT.boostBtn = false;
+    slowHeld = false;
+  } else if (G.mode === 'pause'){
+    G.mode = 'play';
+    $('pause').classList.add('h');
+    last = performance.now();
+  }
 }
 
 function resetRun(){
@@ -222,6 +226,7 @@ function resetRun(){
   resetPigeon();
   resetWeather();
   setCrashed(false);
+  slowHeld = false;
 }
 
 initInput(togglePause);
@@ -245,23 +250,26 @@ function play(dt){
   let iy = cl(stick.y + ((K.ArrowUp||K.KeyW)?1:0) - ((K.ArrowDown||K.KeyS)?1:0), -1, 1);
   if (CFG.inv) iy = -iy;
 
-  const wb = (INPUT.boostBtn || K.Space || K.ShiftLeft) && G.P.meter > .03;
+  const wb = (INPUT.boostBtn || K.Space || K.ShiftLeft) && G.P.meter > .03 && !slowHeld;
   G.P.boost += ((wb ? 1 : 0) - G.P.boost) * (1 - Math.exp(-5*dt));
   G.P.meter = cl(G.P.meter + (wb ? -.30 : .10) * dt);
   if (wb && !G.P.wasB) sfx.boost();
   G.P.wasB = wb;
 
-  /* ---------- YAW: unlimited, no cap, no auto-return ---------- */
   G.P.yaw += ix * YAW_IN * dt;
-
   const fx = Math.sin(G.P.yaw);
   const fz = -Math.cos(G.P.yaw);
 
   const base = 38 + Math.min(22, dist()/90);
-  G.P.fs += (base * (1 + G.P.boost * BOOST_MUL) * (G.P.hit > 0 ? .55 : 1) - G.P.fs) * (1 - Math.exp(-3*dt));
+
+  /* ---------- Target speed: slow overrides boost, boost is 5x base ---------- */
+  const targetSpeed = slowHeld
+    ? 0
+    : base * (1 + G.P.boost * BOOST_MUL) * (G.P.hit > 0 ? .55 : 1);
+  G.P.fs += (targetSpeed - G.P.fs) * (1 - Math.exp(-3*dt));
   G.P.hit = Math.max(0, G.P.hit - dt);
 
-  /* ---------- No auto-up: vertical motion only when you steer up/down ---------- */
+  /* ---------- No auto-up: vertical only when you push up/down ---------- */
   G.P.vy += (iy * 26 * (1 + G.P.boost * .9) - G.P.vy) * (1 - Math.exp(-3*dt));
 
   for (const c of cls){
@@ -316,8 +324,14 @@ function play(dt){
     }
     if (d2 < 14){
       o.visible = false;
-      if (u.gold){ G.Q.golds++; say('Golden slice! Dave: "Posh."', 1.8); }
-      else G.Q.slices++;
+      if (u.gold){
+        G.Q.golds++;
+        G.P.meter = Math.min(1, G.P.meter + 0.80);
+        say('Golden slice! Dave: "Posh."', 1.8);
+      } else {
+        G.Q.slices++;
+        G.P.meter = Math.min(1, G.P.meter + 0.18);
+      }
       sfx.chime(u.gold);
     } else {
       const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
@@ -375,7 +389,7 @@ function play(dt){
   checkMission();
   tickTrail(dt, G.P.boost);
 
-  /* ---------- CAMERA — always exactly behind the player ---------- */
+  /* ---------- Camera: always behind player ---------- */
   cam.position.set(
     G.P.x - fx * CAM_BACK,
     G.P.y + 3.2,
@@ -391,25 +405,6 @@ function play(dt){
   if (cam.fov !== 64){
     cam.fov = 64;
     cam.updateProjectionMatrix();
-  }
-
-  /* ---------- Diagnostic ---------- */
-  const offX = cam.position.x - G.P.x;
-  const offZ = cam.position.z - G.P.z;
-  const fwdComp   = offX * fx + offZ * fz;
-  const rightComp = offX * Math.cos(G.P.yaw) + offZ * Math.sin(G.P.yaw);
-  const behindOK  = Math.abs(fwdComp + CAM_BACK) < 0.01 && Math.abs(rightComp) < 0.01;
-
-  const dbgY = document.getElementById('dbgY');
-  const dbgF = document.getElementById('dbgF');
-  const dbgS = document.getElementById('dbgS');
-  const dbgA = document.getElementById('dbgA');
-  if (dbgY){
-    dbgY.textContent = (G.P.yaw * 180 / Math.PI).toFixed(1);
-    dbgF.textContent = fwdComp.toFixed(2);
-    dbgS.textContent = G.P.fs.toFixed(0) + ' m/s';
-    dbgA.textContent = behindOK ? 'BEHIND ✓' : 'OFF ✗';
-    dbgA.style.color = behindOK ? '#0f0' : '#f00';
   }
 
   tickWeather(dt);
