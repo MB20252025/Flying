@@ -10,6 +10,23 @@ function SH(c){ return new T.MeshLambertMaterial({color:c}); }
 function fwd(){ return { fx: Math.sin(G.P.yaw), fz: -Math.cos(G.P.yaw) }; }
 
 /* ============================================================
+   SHARK GLB SIZE TUNING
+   Change these and reload to adjust how the shark.glb looks.
+   targetLen: overall length along the shark's longest axis (game units).
+              Procedural shark is ~54 units long. Player is ~3 units tall.
+   xMul / yMul / zMul: per-axis multipliers on top of that.
+   You can also tune live from the browser console:
+     window.SHARK_TWEAK.targetLen = 30
+   ============================================================ */
+const SHARK_TWEAK = {
+  targetLen: 55,
+  xMul: 1.0,
+  yMul: 1.0,
+  zMul: 1.0
+};
+if (typeof window !== 'undefined') window.SHARK_TWEAK = SHARK_TWEAK;
+
+/* ============================================================
    TORNADO
    ============================================================ */
 export const TOR = {
@@ -361,8 +378,6 @@ function buildProceduralShark(){
   return g;
 }
 
-const SHARK_GLB_TARGET_LEN = 55;
-
 const sharkPool = [];
 for (let i = 0; i < 3; i++){
   const obj = new T.Group();
@@ -385,7 +400,6 @@ for (let i = 0; i < 3; i++){
   };
   sharkPool.push(slot);
 
-  // Only try to load GLB if GLTFLoader is available
   if (GLTF_AVAILABLE){
     new T.GLTFLoader().load(
       'assets/shark.glb',
@@ -395,7 +409,13 @@ for (let i = 0; i < 3; i++){
           const box = new T.Box3().setFromObject(scene);
           const size = box.getSize(new T.Vector3());
           const maxDim = Math.max(size.x, size.y, size.z) || 1;
-          scene.scale.setScalar(SHARK_GLB_TARGET_LEN / maxDim);
+          const baseScale = SHARK_TWEAK.targetLen / maxDim;
+
+          scene.scale.set(
+            baseScale * SHARK_TWEAK.xMul,
+            baseScale * SHARK_TWEAK.yMul,
+            baseScale * SHARK_TWEAK.zMul
+          );
           scene.rotation.y = Math.PI;
 
           scene.traverse(o => {
@@ -416,7 +436,16 @@ for (let i = 0; i < 3; i++){
             slot.mixer = mixer;
           }
 
-          console.log('[SHARK] GLB loaded for slot', i, '— animations:', gltf.animations?.length || 0);
+          console.log(
+            '[SHARK] GLB loaded for slot', i,
+            '| raw:', size.x.toFixed(2), '×', size.y.toFixed(2), '×', size.z.toFixed(2),
+            '| scaled:', (size.x * baseScale * SHARK_TWEAK.xMul).toFixed(2),
+            '×', (size.y * baseScale * SHARK_TWEAK.yMul).toFixed(2),
+            '×', (size.z * baseScale * SHARK_TWEAK.zMul).toFixed(2),
+            '| targetLen:', SHARK_TWEAK.targetLen,
+            '| mul:', SHARK_TWEAK.xMul, SHARK_TWEAK.yMul, SHARK_TWEAK.zMul,
+            '| animations:', gltf.animations?.length || 0
+          );
         } catch (e){
           console.warn('[SHARK] GLB setup failed for slot', i, e);
         }
@@ -1076,4 +1105,4 @@ export function tickAmbient(dt){
   tickDragons(dt);
   tickOctopus(dt);
   tickExplosions(dt);
-}
+                       }
