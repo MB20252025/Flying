@@ -31,7 +31,7 @@ gc.width = gc.height = 512;
   }
 }
 
-const gt = new T.CanvasTexture(gc);
+export const gt = new T.CanvasTexture(gc);
 gt.wrapS = gt.wrapT = T.RepeatWrapping;
 gt.repeat.set(8,8);
 gt.anisotropy = 4;
@@ -41,3 +41,5 @@ export const ground = new T.Mesh(new T.PlaneGeometry(1600,1600), gm);
 ground.rotation.x = -Math.PI/2;
 ground.position.y = -.3;
 S.add(ground);
+
+export const GROUND_TILE = 200; /* world units per texture repeat — used for UV compensation */
