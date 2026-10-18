@@ -34,13 +34,20 @@ export function resetEyeTracker(){
   nextEyeDistance = 2500 + Math.random() * 1000;
 }
 
+/* Clouds must never sit below alt 200 */
+const CLOUD_MIN_Y = 200;
+
 export function spawnCloud(i, init){
   const c = cls[i];
   if (c.eg){ c.eg.visible = false; c.eg.userData.free = true; c.eg = null; }
   const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
   const ahead = init ? rnd()*700 : 150 + rnd()*550;
   c.x = G.P.x + fx * ahead + (rnd()-.5)*520;
-  c.y = G.P.y + (rnd()-.5)*280;
+
+  let cy = G.P.y + (rnd()-.5)*280;
+  if (cy < CLOUD_MIN_Y) cy = CLOUD_MIN_Y + rnd() * 120;
+  c.y = cy;
+
   c.z = G.P.z + fz * ahead + (rnd()-.5)*520;
   c.gold = rnd() < .07;
   const w = 16 + rnd()*38;
@@ -83,7 +90,7 @@ export function recycleClouds(){
     const dx = c.x - G.P.x, dz = c.z - G.P.z;
     const forward = dx * fx + dz * fz;
     const right   = dx * fz - dz * fx;
-    if (forward < -60 || Math.abs(c.y - G.P.y) > 210 || Math.abs(right) > 340){
+    if (forward < -60 || Math.abs(c.y - G.P.y) > 210 || Math.abs(right) > 340 || c.y < CLOUD_MIN_Y){
       spawnCloud(i, false);
     }
   }
