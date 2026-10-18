@@ -1,6 +1,7 @@
 import { T, rnd } from './utils.js';
 import { G } from './game.js';
 import { S } from './scene.js';
+import { banner } from './ui.js';
 
 function MNF(c, o){ return new T.MeshLambertMaterial(Object.assign({color:c, fog:false}, o||{})); }
 function MNB(c, o){ return new T.MeshBasicMaterial(Object.assign({color:c, fog:false}, o||{})); }
@@ -15,8 +16,7 @@ function towerTexture(){
   const c = document.createElement('canvas');
   c.width = 256; c.height = 1024;
   const x = c.getContext('2d');
-  x.fillStyle = '#7a5a4a'; x.fillRect(0, 0, 256, 1024);
-
+  x.fillStyle = '#8a6a5a'; x.fillRect(0, 0, 256, 1024);
   const cols = 6, rows = 12;
   const cw = 256 / cols, ch = 1024 / rows;
   for (let r = 0; r < rows; r++){
@@ -26,8 +26,8 @@ function towerTexture(){
       const ww = cw * .60, wh = ch * .50;
       const rv = Math.random();
       let color;
-      if (rv < 0.08) color = '#ff5522';
-      else if (rv < 0.45) color = '#ffcc66';
+      if (rv < 0.1) color = '#ff7733';
+      else if (rv < 0.5) color = '#ffcc66';
       else color = '#1a1a2a';
       x.fillStyle = color;
       x.fillRect(wx, wy, ww, wh);
@@ -44,66 +44,76 @@ function buildTower(){
   const g = new T.Group();
   const tex = towerTexture();
   const towerMat = new T.MeshLambertMaterial({map: tex, fog: false});
-  const dark = MNF(0x3a2a24);
-
-  let y = 0, w = 26;
+  const dark = MNF(0x4a3a30);
+  let y = 0, w = 34;
   for (let tier = 0; tier < 10; tier++){
-    const h = 65;
+    const h = 60;
     const box = new T.Mesh(new T.BoxGeometry(w, h, w), towerMat);
     box.position.set(0, y + h/2, 0);
     g.add(box);
     y += h;
-    w *= 0.94;
+    w *= 0.93;
   }
-  g.add(mkMesh(new T.CylinderGeometry(0.5, 4, 60, 8), dark, 0, y + 30, 0));
-  g.add(mkMesh(new T.SphereGeometry(2, 8, 8), MNB(0xff3030), 0, y + 62, 0));
+  g.add(mkMesh(new T.CylinderGeometry(0.5, 5, 50, 8), dark, 0, y + 25, 0));
+  g.add(mkMesh(new T.SphereGeometry(3, 10, 10), MNB(0xff3030), 0, y + 52, 0));
 
   const fires = [];
-  for (let i = 0; i < 8; i++){
-    const fy = 100 + i * 65 + rnd() * 40;
-    const fw = 26 * Math.pow(0.94, Math.floor(fy / 65));
-    const fMat = new T.MeshBasicMaterial({color: 0xff5522, transparent: true, opacity: 0.85, fog: false});
-    const f = new T.Mesh(new T.SphereGeometry(2.6, 8, 8), fMat);
+  for (let i = 0; i < 10; i++){
+    const fy = 80 + i * 55 + rnd() * 30;
+    const fw = 34 * Math.pow(0.93, Math.floor(fy / 60));
+    const fMat = new T.MeshBasicMaterial({color: 0xff5522, transparent: true, opacity: 0.9, fog: false});
+    const f = new T.Mesh(new T.SphereGeometry(3, 8, 8), fMat);
     const side = rnd() < 0.5 ? 1 : -1;
-    f.position.set(side * (fw/2 + 1), fy, rnd() < 0.5 ? (fw/2) : -(fw/2));
+    const which = rnd() < 0.5 ? 'x' : 'z';
+    if (which === 'x'){
+      f.position.set(side * (fw/2 + 1), fy, (rnd() - 0.5) * fw * 0.5);
+    } else {
+      f.position.set((rnd() - 0.5) * fw * 0.5, fy, side * (fw/2 + 1));
+    }
     g.add(f);
     fires.push(fMat);
   }
 
-  g.userData = { fires, height: y + 60 };
+  const beacon = new T.PointLight(0xff3030, 3, 400);
+  beacon.position.set(0, y + 52, 0);
+  g.add(beacon);
+
+  g.userData = { fires, height: y + 52, beacon };
   return g;
 }
 
 function buildKong(){
   const g = new T.Group();
-  const fur = MNF(0x2a1a10);
-  const skin = MNF(0x5a4a3a);
+  const fur = MNF(0x4a3a28);
+  const furDark = MNF(0x2a1a10);
+  const skin = MNF(0x7a6a5a);
 
-  g.add(mkMesh(new T.SphereGeometry(2, 12, 10), fur, 0, 0, 0)).scale.set(1.2, 1.4, 1);
-  g.add(mkMesh(new T.SphereGeometry(1.5, 10, 8), skin, 0, 0.1, 0.9)).scale.set(1, 1.2, 0.4);
-  g.add(mkMesh(new T.SphereGeometry(1.2, 12, 10), fur, 0, 2.5, 0));
-  g.add(mkMesh(new T.SphereGeometry(0.95, 10, 8), skin, 0, 2.4, 0.7)).scale.set(1, 0.9, 0.6);
-  g.add(mkMesh(new T.BoxGeometry(1.8, 0.3, 0.5), fur, 0, 2.7, 0.9));
-  g.add(mkMesh(new T.SphereGeometry(0.18, 8, 8), MNB(0xffdd00), -0.35, 2.55, 1.35));
-  g.add(mkMesh(new T.SphereGeometry(0.18, 8, 8), MNB(0xffdd00), 0.35, 2.55, 1.35));
-  g.add(mkMesh(new T.SphereGeometry(0.08, 6, 6), MNB(0x000000), -0.35, 2.55, 1.5));
-  g.add(mkMesh(new T.SphereGeometry(0.08, 6, 6), MNB(0x000000), 0.35, 2.55, 1.5));
-  g.add(mkMesh(new T.BoxGeometry(0.8, 0.15, 0.2), MNB(0x110000), 0, 2.1, 1.4));
+  g.add(mkMesh(new T.SphereGeometry(2.2, 14, 10), fur, 0, 0, 0)).scale.set(1.3, 1.5, 1.1);
+  g.add(mkMesh(new T.SphereGeometry(1.6, 10, 8), skin, 0, 0.1, 1.0)).scale.set(1, 1.2, 0.4);
+
+  g.add(mkMesh(new T.SphereGeometry(1.4, 14, 12), fur, 0, 2.7, 0));
+  g.add(mkMesh(new T.SphereGeometry(1.05, 10, 8), skin, 0, 2.6, 0.75)).scale.set(1, 0.9, 0.6);
+  g.add(mkMesh(new T.BoxGeometry(2.0, 0.35, 0.5), furDark, 0, 2.9, 0.95));
+  g.add(mkMesh(new T.SphereGeometry(0.22, 8, 8), MNB(0xffee00), -0.4, 2.75, 1.4));
+  g.add(mkMesh(new T.SphereGeometry(0.22, 8, 8), MNB(0xffee00), 0.4, 2.75, 1.4));
+  g.add(mkMesh(new T.SphereGeometry(0.10, 6, 6), MNB(0x000000), -0.4, 2.75, 1.58));
+  g.add(mkMesh(new T.SphereGeometry(0.10, 6, 6), MNB(0x000000), 0.4, 2.75, 1.58));
+  g.add(mkMesh(new T.BoxGeometry(1.0, 0.2, 0.3), MNB(0x220000), 0, 2.3, 1.45));
   for (let i = -1; i <= 1; i++){
-    g.add(mkMesh(new T.BoxGeometry(0.15, 0.2, 0.1), MNB(0xffffcc), i*0.25, 2.05, 1.45));
+    g.add(mkMesh(new T.BoxGeometry(0.18, 0.25, 0.1), MNB(0xffffcc), i*0.3, 2.25, 1.55));
   }
 
   const makeArm = (side) => {
     const shoulder = new T.Group();
-    shoulder.position.set(side * 1.8, 1.2, 0);
-    shoulder.add(mkMesh(new T.SphereGeometry(0.6, 8, 8), fur));
-    shoulder.add(mkMesh(new T.CylinderGeometry(0.55, 0.5, 2.4, 8), fur, 0, -1.2, 0));
+    shoulder.position.set(side * 2.0, 1.2, 0);
+    shoulder.add(mkMesh(new T.SphereGeometry(0.7, 10, 8), fur));
+    shoulder.add(mkMesh(new T.CylinderGeometry(0.6, 0.5, 2.4, 8), fur, 0, -1.2, 0));
     const elbow = new T.Group();
     elbow.position.set(0, -2.4, 0);
     shoulder.add(elbow);
     elbow.add(mkMesh(new T.SphereGeometry(0.5, 8, 8), fur));
     elbow.add(mkMesh(new T.CylinderGeometry(0.5, 0.45, 2, 8), fur, 0, -1, 0));
-    elbow.add(mkMesh(new T.SphereGeometry(0.65, 8, 8), skin, 0, -2.1, 0));
+    elbow.add(mkMesh(new T.SphereGeometry(0.7, 8, 8), skin, 0, -2.1, 0));
     g.add(shoulder);
     return { shoulder, elbow };
   };
@@ -112,14 +122,14 @@ function buildKong(){
 
   const makeLeg = (side) => {
     const hip = new T.Group();
-    hip.position.set(side * 0.8, -2, 0);
-    hip.add(mkMesh(new T.CylinderGeometry(0.65, 0.55, 2, 8), fur, 0, -1, 0));
+    hip.position.set(side * 0.9, -2, 0);
+    hip.add(mkMesh(new T.CylinderGeometry(0.7, 0.6, 2, 8), fur, 0, -1, 0));
     const knee = new T.Group();
     knee.position.set(0, -2, 0);
     hip.add(knee);
-    knee.add(mkMesh(new T.SphereGeometry(0.55, 8, 8), fur));
-    knee.add(mkMesh(new T.CylinderGeometry(0.55, 0.5, 1.8, 8), fur, 0, -0.9, 0));
-    knee.add(mkMesh(new T.BoxGeometry(1.1, 0.5, 1.6), skin, 0, -1.9, 0.3));
+    knee.add(mkMesh(new T.SphereGeometry(0.6, 8, 8), fur));
+    knee.add(mkMesh(new T.CylinderGeometry(0.6, 0.5, 1.8, 8), fur, 0, -0.9, 0));
+    knee.add(mkMesh(new T.BoxGeometry(1.2, 0.5, 1.8), skin, 0, -1.9, 0.35));
     g.add(hip);
     return { hip, knee };
   };
@@ -133,30 +143,30 @@ function buildKong(){
 
 function buildFighter(){
   const g = new T.Group();
-  const body = MNF(0x4a5a3a);
-  const bodyLight = MNF(0x6a7a5a);
+  const body = MNF(0x5a6a4a);
+  const bodyLight = MNF(0x8a9a6a);
   const propM = MNF(0x222222);
 
-  const fus = mkMesh(new T.CylinderGeometry(0.3, 0.2, 3, 8), body);
+  const fus = mkMesh(new T.CylinderGeometry(0.35, 0.25, 3.5, 8), body);
   fus.rotation.x = Math.PI/2;
   g.add(fus);
-  g.add(mkMesh(new T.BoxGeometry(3.2, 0.12, 0.9), bodyLight));
-  g.add(mkMesh(new T.BoxGeometry(0.9, 0.12, 0.5), bodyLight, 0, 0, 1.3));
-  g.add(mkMesh(new T.BoxGeometry(0.12, 0.6, 0.5), bodyLight, 0, 0.3, 1.3));
-  g.add(mkMesh(new T.SphereGeometry(0.35, 8, 6), MNB(0x88ccff), 0, 0.25, 0.2)).scale.set(1, 0.7, 1.2);
+  g.add(mkMesh(new T.BoxGeometry(3.6, 0.15, 1.0), bodyLight));
+  g.add(mkMesh(new T.BoxGeometry(1.0, 0.15, 0.6), bodyLight, 0, 0, 1.5));
+  g.add(mkMesh(new T.BoxGeometry(0.15, 0.7, 0.6), bodyLight, 0, 0.35, 1.5));
+  g.add(mkMesh(new T.SphereGeometry(0.4, 8, 6), MNB(0x88ccff), 0, 0.28, 0.25)).scale.set(1, 0.7, 1.2);
 
   const prop = new T.Group();
-  prop.position.set(0, 0, -1.6);
-  prop.add(mkMesh(new T.BoxGeometry(0.1, 2, 0.1), propM));
-  prop.add(mkMesh(new T.BoxGeometry(2, 0.1, 0.1), propM));
+  prop.position.set(0, 0, -1.9);
+  prop.add(mkMesh(new T.BoxGeometry(0.12, 2.4, 0.12), propM));
+  prop.add(mkMesh(new T.BoxGeometry(2.4, 0.12, 0.12), propM));
   g.add(prop);
   g.userData.prop = prop;
-  g.scale.setScalar(3.5);
+  g.scale.setScalar(4);
   return g;
 }
 
 export const kk = new T.Group();
-kk.position.set(350, 0, -700);
+kk.position.set(120, 0, -450);
 kk.visible = false;
 S.add(kk);
 
@@ -165,7 +175,7 @@ kk.add(tower);
 const TOWER_H = tower.userData.height;
 
 const kong = buildKong();
-kong.position.y = 200;
+kong.position.set(0, 200, 16);
 kk.add(kong);
 
 const planes = [];
@@ -173,7 +183,7 @@ for (let i = 0; i < 3; i++){
   const p = buildFighter();
   p.userData.orbit = {
     angle: i * Math.PI * 2 / 3,
-    radius: 100 + i * 20,
+    radius: 120 + i * 25,
     speed: 0.22 + i * 0.06,
     heightOffset: 30 + i * 25
   };
@@ -210,6 +220,8 @@ function fireShot(fx, fy, fz, tx, ty, tz){
 
 let kkT = 0, kongY = 200, kongDir = 1, active = false;
 
+console.log('[KK] module loaded. Tower at world', kk.position.x, kk.position.y, kk.position.z, 'height', TOWER_H);
+
 export function resetKingKong(){
   kk.visible = false;
   active = false;
@@ -218,20 +230,25 @@ export function resetKingKong(){
   kongDir = 1;
   shotData.forEach(s => s.active = false);
   kong.position.y = 200;
+  kong.position.z = 16;
 }
 
 export function tickKingKong(dt){
   const dz = G.P.z - kk.position.z;
-  if (!active && dz > 0 && dz < 2000 && G.alt > 60 && G.alt < 1600){
+
+  if (!active && G.mode === 'play' && dz > 0 && dz < 2500 && G.alt > 20){
     active = true;
     kk.visible = true;
+    banner('SOMETHING HUGE AHEAD...');
+    console.log('[KK] ACTIVATED at dz=' + dz.toFixed(0) + ' alt=' + G.alt.toFixed(0));
   }
+
   if (!active || !kk.visible) return;
 
   kkT += dt;
 
   kongY += kongDir * 6 * dt;
-  if (kongY > TOWER_H * 0.70) kongDir = -1;
+  if (kongY > TOWER_H * 0.65) kongDir = -1;
   if (kongY < 100) kongDir = 1;
   kong.position.y = kongY;
 
@@ -255,8 +272,7 @@ export function tickKingKong(dt){
     p.position.set(px, py, pz);
     p.lookAt(0, kongY, 0);
     p.userData.prop.rotation.z += dt * 40;
-
-    if (Math.random() < 0.12) fireShot(px, py, pz, 0, kongY, 0);
+    if (Math.random() < 0.12) fireShot(px, py, pz, 0, kongY, 16);
   }
 
   for (const s of shotData){
@@ -291,4 +307,4 @@ export function tickKingKong(dt){
     kk.visible = false;
     active = false;
   }
-}
+      }
