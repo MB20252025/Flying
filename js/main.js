@@ -22,13 +22,12 @@ import { tickKingKong, resetKingKong } from './kingkong.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
-console.log('%c[MAIN] v8-CHASE loaded — yaw capped ±90°, camera follows behind', 'color:#0f0;font-weight:bold;font-size:14px');
+console.log('%c[MAIN] v9-FREE loaded — unlimited yaw, no auto-up, superman boost', 'color:#0f0;font-weight:bold;font-size:14px');
 
 const SPAWN_LEAD = 440;
-const YAW_MAX      = Math.PI / 2;
-const YAW_IN       = 2.0;
-const YAW_RETURN   = 1.2;
-const CAM_BACK     = 14;
+const YAW_IN     = 2.0;               // rad/s — free turning, no cap, no return
+const CAM_BACK   = 14;
+const BOOST_MUL  = 2.0;               // forward speed × (1 + boost*2) ≈ 3× at full boost
 
 /* ---------- Diagnostic overlay ---------- */
 let dbgEl = null;
@@ -44,10 +43,10 @@ function ensureDbg(){
     'border:2px solid #0f0;border-radius:6px;' +
     'text-shadow:0 0 4px #0f0';
   dbgEl.innerHTML =
-    'CAM <b style="color:#0ff">v8-CHASE</b><br>' +
+    'CAM <b style="color:#0ff">v9-FREE</b><br>' +
     'Yaw: <span id="dbgY">?</span>°<br>' +
-    'Fwd offset: <span id="dbgF">?</span> (should be -14)<br>' +
-    'Right offset: <span id="dbgR">?</span> (should be 0)<br>' +
+    'Fwd offset: <span id="dbgF">?</span><br>' +
+    'Speed: <span id="dbgS">?</span><br>' +
     'Result: <span id="dbgA" style="font-size:15px">?</span>';
   document.body.appendChild(dbgEl);
 }
@@ -248,27 +247,22 @@ function play(dt){
 
   const wb = (INPUT.boostBtn || K.Space || K.ShiftLeft) && G.P.meter > .03;
   G.P.boost += ((wb ? 1 : 0) - G.P.boost) * (1 - Math.exp(-5*dt));
-  G.P.meter = cl(G.P.meter + (wb ? -.26 : .09) * dt);
+  G.P.meter = cl(G.P.meter + (wb ? -.30 : .10) * dt);
   if (wb && !G.P.wasB) sfx.boost();
   G.P.wasB = wb;
 
-  /* ---------- YAW: steer up to ±90°, auto-return when released ---------- */
-  if (Math.abs(ix) > 0.1){
-    G.P.yaw += ix * YAW_IN * dt;
-  } else {
-    const decay = YAW_RETURN * dt;
-    if (Math.abs(G.P.yaw) <= decay) G.P.yaw = 0;
-    else G.P.yaw -= Math.sign(G.P.yaw) * decay;
-  }
-  G.P.yaw = cl(G.P.yaw, -YAW_MAX, YAW_MAX);
+  /* ---------- YAW: unlimited, no cap, no auto-return ---------- */
+  G.P.yaw += ix * YAW_IN * dt;
 
   const fx = Math.sin(G.P.yaw);
   const fz = -Math.cos(G.P.yaw);
 
   const base = 38 + Math.min(22, dist()/90);
-  G.P.fs += (base * (1 + G.P.boost*.9) * (G.P.hit > 0 ? .55 : 1) - G.P.fs) * (1 - Math.exp(-3*dt));
+  G.P.fs += (base * (1 + G.P.boost * BOOST_MUL) * (G.P.hit > 0 ? .55 : 1) - G.P.fs) * (1 - Math.exp(-3*dt));
   G.P.hit = Math.max(0, G.P.hit - dt);
-  G.P.vy += (iy*26*(1 + G.P.boost*.9) + 6 - G.P.vy) * (1 - Math.exp(-3*dt));
+
+  /* ---------- No auto-up: vertical motion only when you steer up/down ---------- */
+  G.P.vy += (iy * 26 * (1 + G.P.boost * .9) - G.P.vy) * (1 - Math.exp(-3*dt));
 
   for (const c of cls){
     if (!c.gold) continue;
@@ -295,7 +289,6 @@ function play(dt){
   dave.visible = G.P.hit <= 0 || ((G.P.hit*12)|0) % 2 === 0;
   animD(dt, -.4 - .7*sp - .15*G.P.boost + .5*iy, -ix*.6, .3 + .9*G.P.boost + .2*Math.abs(ix), sp, G.tt);
 
-  /* ---------- Spawn items ahead along current heading ---------- */
   G.spawnAccum += G.P.fs * dt;
   while (G.spawnAccum > G.spawnGap){
     G.spawnAccum -= G.spawnGap;
@@ -382,19 +375,12 @@ function play(dt){
   checkMission();
   tickTrail(dt, G.P.boost);
 
-  /* ============================================================
-     CAMERA — always behind Dave, following his yaw (±90° max).
-     Because yaw is capped, this can orbit at most 90° then stop.
-     It physically cannot spin 360°.
-     ============================================================ */
-  const camX = G.P.x - fx * CAM_BACK;
-  const camY = G.P.y + 3.2;
-  const camZ = G.P.z - fz * CAM_BACK;
-
-  // Snap instantly — no lag — so the camera is always exactly
-  // behind Dave's current heading. If it lagged, you'd see his
-  // side during the swing.
-  cam.position.set(camX, camY, camZ);
+  /* ---------- CAMERA — always exactly behind the player ---------- */
+  cam.position.set(
+    G.P.x - fx * CAM_BACK,
+    G.P.y + 3.2,
+    G.P.z - fz * CAM_BACK
+  );
   cam.up.set(0, 1, 0);
   cam.lookAt(
     G.P.x + fx * 25,
@@ -407,23 +393,21 @@ function play(dt){
     cam.updateProjectionMatrix();
   }
 
-  /* ---------- Diagnostic: verify camera sits behind Dave ---------- */
+  /* ---------- Diagnostic ---------- */
   const offX = cam.position.x - G.P.x;
   const offZ = cam.position.z - G.P.z;
-  const fwdComp   = offX * fx + offZ * fz;            // should be -14
-  const rightX    = Math.cos(G.P.yaw);
-  const rightZ    = Math.sin(G.P.yaw);
-  const rightComp = offX * rightX + offZ * rightZ;    // should be 0
+  const fwdComp   = offX * fx + offZ * fz;
+  const rightComp = offX * Math.cos(G.P.yaw) + offZ * Math.sin(G.P.yaw);
   const behindOK  = Math.abs(fwdComp + CAM_BACK) < 0.01 && Math.abs(rightComp) < 0.01;
 
   const dbgY = document.getElementById('dbgY');
   const dbgF = document.getElementById('dbgF');
-  const dbgR = document.getElementById('dbgR');
+  const dbgS = document.getElementById('dbgS');
   const dbgA = document.getElementById('dbgA');
   if (dbgY){
     dbgY.textContent = (G.P.yaw * 180 / Math.PI).toFixed(1);
     dbgF.textContent = fwdComp.toFixed(2);
-    dbgR.textContent = rightComp.toFixed(2);
+    dbgS.textContent = G.P.fs.toFixed(0) + ' m/s';
     dbgA.textContent = behindOK ? 'BEHIND ✓' : 'OFF ✗';
     dbgA.style.color = behindOK ? '#0f0' : '#f00';
   }
