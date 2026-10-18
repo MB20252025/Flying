@@ -19,7 +19,7 @@ function fwd(){ return { fx: Math.sin(G.P.yaw), fz: -Math.cos(G.P.yaw) }; }
      window.SHARK_TWEAK.targetLen = 30
    ============================================================ */
 const SHARK_TWEAK = {
-  targetLen: 55,
+  targetLen: 5,
   xMul: 1.0,
   yMul: 1.0,
   zMul: 1.0
