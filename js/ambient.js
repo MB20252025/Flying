@@ -10,19 +10,18 @@ function SH(c){ return new T.MeshLambertMaterial({color:c}); }
 function fwd(){ return { fx: Math.sin(G.P.yaw), fz: -Math.cos(G.P.yaw) }; }
 
 /* ============================================================
-   SHARK GLB SIZE TUNING
-   Change these and reload to adjust how the shark.glb looks.
-   targetLen: overall length along the shark's longest axis (game units).
-              Procedural shark is ~54 units long. Player is ~3 units tall.
-   xMul / yMul / zMul: per-axis multipliers on top of that.
-   You can also tune live from the browser console:
-     window.SHARK_TWEAK.targetLen = 30
+   SHARK GLB SIZE + HIDE TUNING
+   - targetLen: overall length in game units
+   - xMul/yMul/zMul: per-axis multipliers
+   - hideByName: force-hide specific sub-meshes by name
+   Tune live: window.SHARK_TWEAK.targetLen = 2
    ============================================================ */
 const SHARK_TWEAK = {
-  targetLen: 5,
+  targetLen: 1,
   xMul: 1.0,
   yMul: 1.0,
-  zMul: 1.0
+  zMul: 1.0,
+  hideByName: []
 };
 if (typeof window !== 'undefined') window.SHARK_TWEAK = SHARK_TWEAK;
 
@@ -160,7 +159,7 @@ let astA = false, astT = 0;
 const astVel = new T.Vector3();
 
 /* ============================================================
-   GLTFLoader availability check
+   GLTFLoader availability
    ============================================================ */
 const GLTF_AVAILABLE = typeof T.GLTFLoader === 'function';
 if (!GLTF_AVAILABLE){
@@ -168,7 +167,7 @@ if (!GLTF_AVAILABLE){
 }
 
 /* ============================================================
-   SHARK
+   SHARK — procedural fallback + lazy GLB
    ============================================================ */
 const SHARK_PROFILE = [
   new T.Vector2(0.05, 0), new T.Vector2(0.20, 0.5), new T.Vector2(0.50, 1.5),
@@ -406,8 +405,80 @@ for (let i = 0; i < 3; i++){
       (gltf) => {
         try {
           const scene = gltf.scene;
-          const box = new T.Box3().setFromObject(scene);
-          const size = box.getSize(new T.Vector3());
+
+          /* --- Pass 1: inventory + hide oversized/misfit meshes --- */
+          const meshes = [];
+          scene.traverse(o => {
+            if (o.isMesh || o.isSkinnedMesh){
+              o.frustumCulled = false;
+              const b = new T.Box3().setFromObject(o);
+              const s = b.getSize(new T.Vector3());
+              const c = new T.Vector3();
+              b.getCenter(c);
+              const vc = o.geometry?.attributes?.position?.count || 0;
+              meshes.push({ obj: o, size: s, center: c, verts: vc, name: o.name || o.material?.name || '(unnamed)' });
+            }
+          });
+
+          /* Dominant mesh = MOST VERTICES → that's the body.
+             Volume and bbox size are unreliable — decorative extras can be bigger. */
+          let bodyMax = 1;
+          let bodyVerts = 0;
+          for (const m of meshes){
+            if (m.verts > bodyVerts){
+              bodyVerts = m.verts;
+              bodyMax = Math.max(m.size.x, m.size.y, m.size.z);
+            }
+          }
+          console.log('[SHARK] Body mesh = most verts (' + bodyVerts + '), max dim', bodyMax.toFixed(3));
+
+          console.group('[SHARK] GLB mesh inventory (slot ' + i + ')');
+          for (const m of meshes){
+            const mMax = Math.max(m.size.x, m.size.y, m.size.z);
+            const ratio = mMax / bodyMax;
+            const hideBySize = ratio > 3;
+            const hideManually = SHARK_TWEAK.hideByName.includes(m.name);
+
+            /* Distance from body centre (assume body centred near origin in local model space).
+               Anything sitting > 5× body size away is a stray decorative mesh. */
+            const distFromOrigin = m.center.length();
+            const hideByDistance = distFromOrigin > bodyMax * 5;
+
+            let tag = '';
+            if (hideBySize) tag += '  ← OVERSIZED';
+            if (hideByDistance) tag += '  ← FAR FROM BODY';
+            if (hideManually) tag += '  ← hidden by name';
+            if (tag) tag = tag + ' (hiding)';
+
+            console.log(
+              '•', String(m.name).padEnd(30),
+              'verts:', String(m.verts).padStart(6),
+              '| size:', m.size.x.toFixed(2), '×', m.size.y.toFixed(2), '×', m.size.z.toFixed(2),
+              '| ratio:', ratio.toFixed(2) + '×',
+              '| dist:', distFromOrigin.toFixed(2),
+              tag
+            );
+
+            if (hideBySize || hideManually || hideByDistance) m.obj.visible = false;
+          }
+          console.groupEnd();
+
+          /* --- Pass 2: compute size from VISIBLE meshes only --- */
+          const visibleBox = new T.Box3();
+          visibleBox.makeEmpty();
+          for (const m of meshes){
+            if (m.obj.visible){
+              const b = new T.Box3().setFromObject(m.obj);
+              visibleBox.union(b);
+            }
+          }
+
+          if (visibleBox.isEmpty()){
+            visibleBox.setFromObject(scene);
+            console.warn('[SHARK] All meshes were hidden — falling back to whole-scene size');
+          }
+
+          const size = visibleBox.getSize(new T.Vector3());
           const maxDim = Math.max(size.x, size.y, size.z) || 1;
           const baseScale = SHARK_TWEAK.targetLen / maxDim;
 
@@ -417,10 +488,6 @@ for (let i = 0; i < 3; i++){
             baseScale * SHARK_TWEAK.zMul
           );
           scene.rotation.y = Math.PI;
-
-          scene.traverse(o => {
-            if (o.isMesh || o.isSkinnedMesh) o.frustumCulled = false;
-          });
 
           procedural.visible = false;
           obj.add(scene);
@@ -437,13 +504,14 @@ for (let i = 0; i < 3; i++){
           }
 
           console.log(
-            '[SHARK] GLB loaded for slot', i,
-            '| raw:', size.x.toFixed(2), '×', size.y.toFixed(2), '×', size.z.toFixed(2),
-            '| scaled:', (size.x * baseScale * SHARK_TWEAK.xMul).toFixed(2),
-            '×', (size.y * baseScale * SHARK_TWEAK.yMul).toFixed(2),
-            '×', (size.z * baseScale * SHARK_TWEAK.zMul).toFixed(2),
-            '| targetLen:', SHARK_TWEAK.targetLen,
-            '| mul:', SHARK_TWEAK.xMul, SHARK_TWEAK.yMul, SHARK_TWEAK.zMul,
+            '[SHARK] slot', i,
+            'visible size:', size.x.toFixed(3), '×', size.y.toFixed(3), '×', size.z.toFixed(3),
+            '| maxDim:', maxDim.toFixed(3),
+            '| baseScale:', baseScale.toFixed(4),
+            '| final:',
+            (size.x * baseScale * SHARK_TWEAK.xMul).toFixed(3),
+            '×', (size.y * baseScale * SHARK_TWEAK.yMul).toFixed(3),
+            '×', (size.z * baseScale * SHARK_TWEAK.zMul).toFixed(3),
             '| animations:', gltf.animations?.length || 0
           );
         } catch (e){
@@ -1105,4 +1173,4 @@ export function tickAmbient(dt){
   tickDragons(dt);
   tickOctopus(dt);
   tickExplosions(dt);
-                       }
+       }
