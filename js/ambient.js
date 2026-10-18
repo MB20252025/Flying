@@ -10,18 +10,26 @@ function SH(c){ return new T.MeshLambertMaterial({color:c}); }
 function fwd(){ return { fx: Math.sin(G.P.yaw), fz: -Math.cos(G.P.yaw) }; }
 
 /* ============================================================
-   SHARK GLB SIZE + HIDE TUNING
-   - targetLen: overall length in game units
-   - xMul/yMul/zMul: per-axis multipliers
-   - hideByName: force-hide specific sub-meshes by name
-   Tune live: window.SHARK_TWEAK.targetLen = 2
+   SHARK TUNING
+   - targetLen: overall length in game units (Dave ~3, buildings 20-50)
+   - chaseSpeed: max chase speed toward player (units/sec)
+   - chaseBoost: how fast it accelerates (multiplies distance)
+   - turnRate: how quickly it can face new direction (rad/s)
+   - eatRadius: bite radius — how close to Dave before it hits
+   - lifetime: seconds alive before vanishing
    ============================================================ */
 const SHARK_TWEAK = {
-  targetLen: 1,
+  targetLen: 10,
   xMul: 1.0,
   yMul: 1.0,
   zMul: 1.0,
-  hideByName: []
+  hideByName: [],
+
+  chaseSpeed: 95,
+  chaseBoost: 1.5,
+  turnRate:   2.5,
+  eatRadius:  16,
+  lifetime:   20
 };
 if (typeof window !== 'undefined') window.SHARK_TWEAK = SHARK_TWEAK;
 
@@ -405,8 +413,6 @@ for (let i = 0; i < 3; i++){
       (gltf) => {
         try {
           const scene = gltf.scene;
-
-          /* --- Pass 1: inventory + hide oversized/misfit meshes --- */
           const meshes = [];
           scene.traverse(o => {
             if (o.isMesh || o.isSkinnedMesh){
@@ -420,38 +426,35 @@ for (let i = 0; i < 3; i++){
             }
           });
 
-          /* Dominant mesh = MOST VERTICES → that's the body.
-             Volume and bbox size are unreliable — decorative extras can be bigger. */
-          let bodyMax = 1;
-          let bodyVerts = 0;
+          let bodyMax = 1, bodyVerts = 0;
           for (const m of meshes){
             if (m.verts > bodyVerts){
               bodyVerts = m.verts;
               bodyMax = Math.max(m.size.x, m.size.y, m.size.z);
             }
           }
+          if (bodyMax < 0.001) bodyMax = 1;
           console.log('[SHARK] Body mesh = most verts (' + bodyVerts + '), max dim', bodyMax.toFixed(3));
 
+          let hidden = 0, kept = 0;
           console.group('[SHARK] GLB mesh inventory (slot ' + i + ')');
           for (const m of meshes){
             const mMax = Math.max(m.size.x, m.size.y, m.size.z);
             const ratio = mMax / bodyMax;
-            const hideBySize = ratio > 3;
-            const hideManually = SHARK_TWEAK.hideByName.includes(m.name);
-
-            /* Distance from body centre (assume body centred near origin in local model space).
-               Anything sitting > 5× body size away is a stray decorative mesh. */
             const distFromOrigin = m.center.length();
-            const hideByDistance = distFromOrigin > bodyMax * 5;
+            const isOversized = ratio > 3;
+            const isFarAway   = distFromOrigin > bodyMax * 3;
+            const inHideList  = SHARK_TWEAK.hideByName.includes(m.name);
+            const shouldHide = inHideList || (isOversized && isFarAway);
 
             let tag = '';
-            if (hideBySize) tag += '  ← OVERSIZED';
-            if (hideByDistance) tag += '  ← FAR FROM BODY';
-            if (hideManually) tag += '  ← hidden by name';
-            if (tag) tag = tag + ' (hiding)';
+            if (inHideList) tag = '  ← HIDDEN (by name)';
+            else if (shouldHide) tag = '  ← HIDDEN (oversized ' + ratio.toFixed(1) + '× AND far ' + distFromOrigin.toFixed(1) + ')';
+            else if (isOversized) tag = '  (oversized but close to body — keeping)';
+            else if (isFarAway) tag = '  (far from body but small — keeping)';
 
             console.log(
-              '•', String(m.name).padEnd(30),
+              '•', String(m.name).padEnd(28),
               'verts:', String(m.verts).padStart(6),
               '| size:', m.size.x.toFixed(2), '×', m.size.y.toFixed(2), '×', m.size.z.toFixed(2),
               '| ratio:', ratio.toFixed(2) + '×',
@@ -459,25 +462,24 @@ for (let i = 0; i < 3; i++){
               tag
             );
 
-            if (hideBySize || hideManually || hideByDistance) m.obj.visible = false;
+            if (shouldHide){ m.obj.visible = false; hidden++; }
+            else kept++;
           }
           console.groupEnd();
 
-          /* --- Pass 2: compute size from VISIBLE meshes only --- */
+          if (kept < 2){
+            console.error('[SHARK] ✗ Only ' + kept + ' visible meshes after hiding — REVERTING all hides.');
+            for (const m of meshes) m.obj.visible = true;
+            return;
+          }
+
           const visibleBox = new T.Box3();
           visibleBox.makeEmpty();
           for (const m of meshes){
             if (m.obj.visible){
-              const b = new T.Box3().setFromObject(m.obj);
-              visibleBox.union(b);
+              visibleBox.union(new T.Box3().setFromObject(m.obj));
             }
           }
-
-          if (visibleBox.isEmpty()){
-            visibleBox.setFromObject(scene);
-            console.warn('[SHARK] All meshes were hidden — falling back to whole-scene size');
-          }
-
           const size = visibleBox.getSize(new T.Vector3());
           const maxDim = Math.max(size.x, size.y, size.z) || 1;
           const baseScale = SHARK_TWEAK.targetLen / maxDim;
@@ -503,15 +505,14 @@ for (let i = 0; i < 3; i++){
             slot.mixer = mixer;
           }
 
+          const finalLen = Math.max(
+            size.x * baseScale * SHARK_TWEAK.xMul,
+            size.y * baseScale * SHARK_TWEAK.yMul,
+            size.z * baseScale * SHARK_TWEAK.zMul
+          );
           console.log(
-            '[SHARK] slot', i,
-            'visible size:', size.x.toFixed(3), '×', size.y.toFixed(3), '×', size.z.toFixed(3),
-            '| maxDim:', maxDim.toFixed(3),
-            '| baseScale:', baseScale.toFixed(4),
-            '| final:',
-            (size.x * baseScale * SHARK_TWEAK.xMul).toFixed(3),
-            '×', (size.y * baseScale * SHARK_TWEAK.yMul).toFixed(3),
-            '×', (size.z * baseScale * SHARK_TWEAK.zMul).toFixed(3),
+            '[SHARK] ✓ slot', i, 'GLB active | visible meshes:', kept, '/' + meshes.length,
+            '| FINAL LENGTH:', finalLen.toFixed(2), 'units',
             '| animations:', gltf.animations?.length || 0
           );
         } catch (e){
@@ -826,7 +827,7 @@ function spawnShark(){
   slot.obj.visible = true;
   slot.active = true;
   slot.phase = 0;
-  slot.life = 20;
+  slot.life = SHARK_TWEAK.lifetime;
   slot.target = null;
   return true;
 }
@@ -936,6 +937,9 @@ function tickAsteroid(dt){
   if (astT > 6){ ast.visible = false; astA = false; }
 }
 
+/* ============================================================
+   SHARK TICK — chases the player, bites on contact
+   ============================================================ */
 function tickSharks(dt){
   for (const s of sharkPool){
     if (!s.active) continue;
@@ -950,44 +954,40 @@ function tickSharks(dt){
       s.procedural.userData.jawPivot.rotation.x = -Math.abs(Math.sin(s.phase * 1.5)) * 0.22 - 0.03;
     }
 
-    if (!s.target || !s.target.visible) s.target = findNearestSlice(s.obj.position);
+    /* --- Target: the player, always --- */
+    const dx = G.P.x - s.obj.position.x;
+    const dy = G.P.y - s.obj.position.y;
+    const dz = G.P.z - s.obj.position.z;
+    const d = Math.hypot(dx, dy, dz) || 1;
 
-    let targetYaw = s.obj.rotation.y;
-    let desiredSpeed = 0;
+    const targetYaw = Math.atan2(dx, dz) + Math.PI;
+    const desiredSpeed = Math.min(SHARK_TWEAK.chaseSpeed, d * SHARK_TWEAK.chaseBoost);
 
-    if (s.target){
-      const dx = s.target.position.x - s.obj.position.x;
-      const dy = s.target.position.y - s.obj.position.y;
-      const dz = s.target.position.z - s.obj.position.z;
-      const d = Math.hypot(dx, dy, dz) || 1;
-
-      targetYaw = Math.atan2(dx, dz) + Math.PI;
-      desiredSpeed = Math.min(95, d * 1.5);
-
-      if (d < 16){
-        s.target.visible = false;
-        s.target = null;
-      } else {
-        s.obj.position.x += (dx/d) * desiredSpeed * dt;
-        s.obj.position.y += (dy/d) * desiredSpeed * dt;
-        s.obj.position.z += (dz/d) * desiredSpeed * dt;
-      }
-    } else {
-      const fwdX = Math.sin(s.obj.rotation.y);
-      const fwdZ = Math.cos(s.obj.rotation.y);
-      s.obj.position.x += fwdX * 15 * dt;
-      s.obj.position.z += fwdZ * 15 * dt;
-    }
+    s.obj.position.x += (dx/d) * desiredSpeed * dt;
+    s.obj.position.y += (dy/d) * desiredSpeed * dt;
+    s.obj.position.z += (dz/d) * desiredSpeed * dt;
 
     let yawDiff = targetYaw - s.obj.rotation.y;
     while (yawDiff > Math.PI)  yawDiff -= Math.PI * 2;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
-    const maxRot = 2.5 * dt;
+    const maxRot = SHARK_TWEAK.turnRate * dt;
     if (Math.abs(yawDiff) < maxRot) s.obj.rotation.y = targetYaw;
     else s.obj.rotation.y += Math.sign(yawDiff) * maxRot;
 
     const targetRoll = -Math.sign(yawDiff) * Math.min(Math.abs(yawDiff), 0.35);
     s.obj.rotation.z += (targetRoll - s.obj.rotation.z) * Math.min(1, dt * 3);
+
+    /* --- Bite / contact damage --- */
+    if (d < SHARK_TWEAK.eatRadius){
+      G.P.hit = 1.4;
+      G.P.fs *= 0.4;
+      G.Q.bumps++;
+      G.Q.clean = 0;
+      G.shake = 1.2;
+      say('Dave: "OI! SHARK!"', 2);
+      s.active = false;
+      s.obj.visible = false;
+    }
 
     if (s.life <= 0){ s.active = false; s.obj.visible = false; }
   }
@@ -1173,4 +1173,4 @@ export function tickAmbient(dt){
   tickDragons(dt);
   tickOctopus(dt);
   tickExplosions(dt);
-       }
+      }
