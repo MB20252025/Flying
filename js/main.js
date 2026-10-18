@@ -22,7 +22,7 @@ import { tickKingKong, resetKingKong } from './kingkong.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
-const YAW_RATE = 2.2;
+const YAW_RATE = 1.5;
 const SPAWN_LEAD = 440;
 
 /* ---------- Cloud eyes ---------- */
@@ -339,25 +339,21 @@ function play(dt){
   checkMission();
   tickTrail(dt, G.P.boost);
 
-  /* ---------- CAMERA: rigidly locked behind player ---------- */
+  /* ---------- CAMERA: strictly locked behind player ---------- */
   G.shake = Math.max(0, G.shake - dt*2);
 
-  const camBack = 12 + G.P.boost * 3;
-  const pvy = cl(G.P.vy, -42, 42);
+  const camBack = 14 + G.P.boost * 3;
 
-  // Horizontal: snap directly behind player (no lag)
-  cam.position.x = G.P.x - fx * camBack + (Math.random()-.5) * G.shake * .4;
-  cam.position.z = G.P.z - fz * camBack + (Math.random()-.5) * G.shake * .4;
+  // Snap X/Z behind player. Y smoothly follows target height only.
+  cam.position.x = G.P.x - fx * camBack;
+  cam.position.z = G.P.z - fz * camBack;
+  cam.position.y += ((G.P.y + 3.2) - cam.position.y) * (1 - Math.exp(-8 * dt));
 
-  // Vertical: slight smooth to avoid jitter from vy
-  const targetY = G.P.y + 3.5 + cl(-G.P.vy * .15, -4, 4);
-  cam.position.y += (targetY - cam.position.y) * (1 - Math.exp(-8 * dt));
-
-  // Always look ahead of player in their heading
+  // Look slightly forward, roughly level with the player.
   cam.lookAt(
-    G.P.x + fx * 30,
-    G.P.y + .8 + pvy * 1.5,
-    G.P.z + fz * 30
+    G.P.x + fx * 25,
+    G.P.y + 1.2,
+    G.P.z + fz * 25
   );
 
   const fov = 64 + sp * 10 + G.P.boost * 8;
