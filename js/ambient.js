@@ -11,12 +11,6 @@ function fwd(){ return { fx: Math.sin(G.P.yaw), fz: -Math.cos(G.P.yaw) }; }
 
 /* ============================================================
    SHARK TUNING
-   - targetLen: overall length in game units (Dave ~3, buildings 20-50)
-   - chaseSpeed: max chase speed toward player (units/sec)
-   - chaseBoost: how fast it accelerates (multiplies distance)
-   - turnRate: how quickly it can face new direction (rad/s)
-   - eatRadius: bite radius — how close to Dave before it hits
-   - lifetime: seconds alive before vanishing
    ============================================================ */
 const SHARK_TWEAK = {
   targetLen: 10,
@@ -386,7 +380,7 @@ function buildProceduralShark(){
 }
 
 const sharkPool = [];
-for (let i = 0; i < 3; i++){
+for (let i = 0; i < 5; i++){
   const obj = new T.Group();
   obj.visible = false;
   S.add(obj);
@@ -426,39 +420,50 @@ for (let i = 0; i < 3; i++){
             }
           });
 
-          let bodyMax = 1, bodyVerts = 0;
+          /* --- Find the body: mesh with the most vertices --- */
+          let bodyMesh = meshes[0];
+          let maxVerts = 0;
           for (const m of meshes){
-            if (m.verts > bodyVerts){
-              bodyVerts = m.verts;
-              bodyMax = Math.max(m.size.x, m.size.y, m.size.z);
+            if (m.verts > maxVerts){
+              maxVerts = m.verts;
+              bodyMesh = m;
             }
           }
-          if (bodyMax < 0.001) bodyMax = 1;
-          console.log('[SHARK] Body mesh = most verts (' + bodyVerts + '), max dim', bodyMax.toFixed(3));
+
+          /* Body's actual world bounding box + centre */
+          const bodyBox = new T.Box3().setFromObject(bodyMesh.obj);
+          const bodySize = bodyBox.getSize(new T.Vector3());
+          const bodyCenter = bodyBox.getCenter(new T.Vector3());
+          const bodyMax = Math.max(bodySize.x, bodySize.y, bodySize.z) || 1;
+
+          console.log(
+            '[SHARK] Body mesh:', bodyMesh.name,
+            '| verts:', maxVerts,
+            '| size:', bodySize.x.toFixed(2), '×', bodySize.y.toFixed(2), '×', bodySize.z.toFixed(2),
+            '| centre:', bodyCenter.x.toFixed(2), bodyCenter.y.toFixed(2), bodyCenter.z.toFixed(2)
+          );
+
+          /* Expanded box: body's box grown by 2× bodyMax.
+             Any mesh whose centre is OUTSIDE this is a stray whisker / floating fin. */
+          const expandedBox = bodyBox.clone().expandByScalar(bodyMax * 2);
 
           let hidden = 0, kept = 0;
           console.group('[SHARK] GLB mesh inventory (slot ' + i + ')');
           for (const m of meshes){
-            const mMax = Math.max(m.size.x, m.size.y, m.size.z);
-            const ratio = mMax / bodyMax;
-            const distFromOrigin = m.center.length();
-            const isOversized = ratio > 3;
-            const isFarAway   = distFromOrigin > bodyMax * 3;
-            const inHideList  = SHARK_TWEAK.hideByName.includes(m.name);
-            const shouldHide = inHideList || (isOversized && isFarAway);
+            const distFromBody = m.center.distanceTo(bodyCenter);
+            const inHideList = SHARK_TWEAK.hideByName.includes(m.name);
+            const outsideBox = !expandedBox.containsPoint(m.center);
+            const shouldHide = inHideList || (m !== bodyMesh && outsideBox);
 
             let tag = '';
             if (inHideList) tag = '  ← HIDDEN (by name)';
-            else if (shouldHide) tag = '  ← HIDDEN (oversized ' + ratio.toFixed(1) + '× AND far ' + distFromOrigin.toFixed(1) + ')';
-            else if (isOversized) tag = '  (oversized but close to body — keeping)';
-            else if (isFarAway) tag = '  (far from body but small — keeping)';
+            else if (shouldHide) tag = '  ← HIDDEN (outside body box, dist ' + distFromBody.toFixed(2) + ')';
 
             console.log(
               '•', String(m.name).padEnd(28),
               'verts:', String(m.verts).padStart(6),
               '| size:', m.size.x.toFixed(2), '×', m.size.y.toFixed(2), '×', m.size.z.toFixed(2),
-              '| ratio:', ratio.toFixed(2) + '×',
-              '| dist:', distFromOrigin.toFixed(2),
+              '| dist from body:', distFromBody.toFixed(2),
               tag
             );
 
@@ -466,6 +471,7 @@ for (let i = 0; i < 3; i++){
             else kept++;
           }
           console.groupEnd();
+          console.log('[SHARK] Slot ' + i + ' visibility: ' + kept + ' kept, ' + hidden + ' hidden');
 
           if (kept < 2){
             console.error('[SHARK] ✗ Only ' + kept + ' visible meshes after hiding — REVERTING all hides.');
@@ -799,20 +805,12 @@ export function killTarget(t){
 /* ============================================================
    HELPERS
    ============================================================ */
-function findNearestSlice(pos){
-  let best = null, bestD = 1e9;
-  for (const s of sl){
-    if (!s.visible) continue;
-    const dx = s.position.x - pos.x, dy = s.position.y - pos.y, dz = s.position.z - pos.z;
-    const d = dx*dx + dy*dy + dz*dz;
-    if (d < bestD){ bestD = d; best = s; }
-  }
-  return best;
-}
-
 function spawnShark(){
   const slot = sharkPool.find(s => !s.active);
   if (!slot) return false;
+  const activeCount = sharkPool.filter(s => s.active).length;
+  console.log('[SHARK] Spawn. Active: ' + (activeCount + 1) + '/' + sharkPool.length);
+
   const { fx, fz } = fwd();
   const side = rnd() < .5 ? -1 : 1;
   const d = 300 + rnd() * 200;
@@ -1076,7 +1074,7 @@ function tickOctopus(dt){
 /* ============================================================
    MASTER TIMERS
    ============================================================ */
-let spawnT = 8, sharkTimer = 4, dragonTimer = 6;
+let spawnT = 8, sharkTimer = 2, dragonTimer = 6;
 
 export function resetAmbient(){
   wt.visible = false; wtA = false; wtT = 0; wtSpin = 0;
@@ -1098,14 +1096,14 @@ export function resetAmbient(){
   });
   explosions.length = 0;
 
-  spawnT = 8; sharkTimer = 4; dragonTimer = 6;
+  spawnT = 8; sharkTimer = 2; dragonTimer = 6;
 }
 
 function pickOne(){
   const opts = [];
   if (G.alt < 600) opts.push('wt', 'oct');
   if (G.alt > 40 && G.alt < 2400) opts.push('drg', 'drg', 'drg');
-  if (G.alt > 80 && G.alt < 2000) opts.push('shk', 'shk', 'shk');
+  if (G.alt > 20) opts.push('shk', 'shk', 'shk', 'shk');
   if (G.alt > 150) opts.push('ast', 'ast');
   if (opts.length === 0) opts.push('ast');
   const e = opts[(Math.random() * opts.length) | 0];
@@ -1147,8 +1145,8 @@ export function tickAmbient(dt){
 
   sharkTimer -= dt;
   if (sharkTimer <= 0){
-    if (G.alt > 80 && G.alt < 2000) spawnShark();
-    sharkTimer = 6 + Math.random() * 6;
+    if (G.alt > 20) spawnShark();
+    sharkTimer = 3 + Math.random() * 3;
   }
   dragonTimer -= dt;
   if (dragonTimer <= 0){
@@ -1173,4 +1171,4 @@ export function tickAmbient(dt){
   tickDragons(dt);
   tickOctopus(dt);
   tickExplosions(dt);
-      }
+             }
