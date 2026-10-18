@@ -22,7 +22,6 @@ import { tickKingKong, resetKingKong } from './kingkong.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
-const YAW_RATE = 1.5;
 const SPAWN_LEAD = 440;
 
 /* ---------- Cloud eyes ---------- */
@@ -144,6 +143,7 @@ function startPlay(){
   G.P.x = 50;
   G.P.z = 51.9;
   G.P.yaw = 0;
+  G.P.vx = 0;
   G.P.fs = 8;
   room.visible = false;
   $('sk').classList.add('h');
@@ -152,6 +152,8 @@ function startPlay(){
   G.spawnAccum = 0;
   G.spawnGap = 60;
   for (let i = 0; i < NC; i++) spawnCloud(i, true);
+  cam.position.set(G.P.x, G.P.y + 3.2, G.P.z + 14);
+  cam.lookAt(G.P.x, G.P.y + 1.2, G.P.z - 25);
 }
 
 function restart(){
@@ -173,17 +175,16 @@ function resetRun(){
   setSeed(20260 + (Math.random()*9999|0));
   G.Q = { slices:0, rings:0, bumps:0, clean:0, bonus:0, golds:0 };
   G.mi = 0; G.mbase = 0;
-  G.P.vx = G.P.vy = 0; G.P.fs = 0; G.P.boost = 0; G.P.meter = 1; G.P.hit = 0; G.P.yaw = 0;
+  G.P.vx = 0; G.P.vy = 0; G.P.fs = 0; G.P.boost = 0; G.P.meter = 1; G.P.hit = 0; G.P.yaw = 0;
   G.totalDist = 0;
   G.spawnAccum = 0;
   G.spawnGap = 60;
   resetEyeTracker();
   [sl, ob, rg].forEach(a => a.forEach(o => o.visible = false));
   for (let i = 0; i < NC; i++) spawnCloud(i, true);
-  const fx0 = Math.sin(G.P.yaw), fz0 = -Math.cos(G.P.yaw);
   for (let k = 0; k < 5; k++){
     const ahead = 130 + k * 85;
-    pattern(G.P.x + fx0*ahead, G.P.y, G.P.z + fz0*ahead, fx0, fz0);
+    pattern(G.P.x, G.P.y, G.P.z - ahead, 0, -1);
   }
   tp.fill(-9999);
   G.hc = [1e9, 1e9];
@@ -222,9 +223,13 @@ function play(dt){
   if (wb && !G.P.wasB) sfx.boost();
   G.P.wasB = wb;
 
-  G.P.yaw += ix * YAW_RATE * dt;
-  const fx = Math.sin(G.P.yaw);
-  const fz = -Math.cos(G.P.yaw);
+  /* NO YAW — the player always flies forward along -Z.
+     Left/right now strafes sideways. The camera never rotates. */
+  G.P.yaw = 0;
+  const fx = 0, fz = -1;
+
+  /* strafe velocity: lerps toward the joystick input */
+  G.P.vx += (ix * 32 - G.P.vx) * (1 - Math.exp(-4*dt));
 
   const base = 38 + Math.min(22, dist()/90);
   G.P.fs += (base * (1 + G.P.boost*.9) * (G.P.hit > 0 ? .55 : 1) - G.P.fs) * (1 - Math.exp(-3*dt));
@@ -242,7 +247,7 @@ function play(dt){
     c.in = i;
   }
 
-  G.P.x += fx * G.P.fs * dt;
+  G.P.x += G.P.vx * dt;
   G.P.y += G.P.vy * dt;
   G.P.z += fz * G.P.fs * dt;
   if (G.P.y < 14){ G.P.y = 14; G.P.vy = Math.max(G.P.vy, 0); }
@@ -252,7 +257,9 @@ function play(dt){
 
   const sp = cl((G.P.fs - 30)/70);
   dave.position.set(G.P.x, G.P.y, G.P.z);
-  dave.rotation.y = G.P.yaw;
+  /* Dave faces slightly toward his travel direction so strafing reads clearly,
+     but never more than ~40° off forward. */
+  dave.rotation.y = Math.atan2(G.P.vx, G.P.fs + 0.001);
   dave.visible = G.P.hit <= 0 || ((G.P.hit*12)|0) % 2 === 0;
   animD(dt, -.4 - .7*sp - .15*G.P.boost + .5*iy, -ix*.6, .3 + .9*G.P.boost + .2*Math.abs(ix), sp, G.tt);
 
@@ -283,10 +290,7 @@ function play(dt){
       if (u.gold){ G.Q.golds++; say('Golden slice! Dave: "Posh."', 1.8); }
       else G.Q.slices++;
       sfx.chime(u.gold);
-    } else {
-      const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
-      if (behind < -50) o.visible = false;
-    }
+    } else if (o.position.z > G.P.z + 50) o.visible = false;
   }
 
   for (const o of ob){
@@ -307,8 +311,7 @@ function play(dt){
       sfx.hit();
       say(['Dave: "Ow. Rude."', 'Dave: "Who parks a sofa up here?"', 'Dave: "Mind the doughnut, mate."'][Math.random()*3|0], 2);
     }
-    const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
-    if (behind < -60) o.visible = false;
+    if (o.position.z > G.P.z + 60) o.visible = false;
   }
 
   for (const o of rg){
@@ -317,8 +320,7 @@ function play(dt){
     u.age += dt;
     o.material.color.setHSL((G.tt*.3 + o.id*.1) % 1, .8, .65);
     o.scale.setScalar(Math.min(1, u.age*1.5));
-    const alongF = (G.P.x - o.position.x) * fx + (G.P.z - o.position.z) * fz;
-    if (!u.done && alongF > 0){
+    if (!u.done && o.position.z > G.P.z){
       u.done = true;
       const dx = G.P.x - o.position.x, dy = G.P.y - o.position.y;
       if (dx*dx + dy*dy < 80){
@@ -328,8 +330,7 @@ function play(dt){
         G.shake = .3;
       }
     }
-    const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
-    if (behind < -60) o.visible = false;
+    if (o.position.z > G.P.z + 60) o.visible = false;
   }
 
   tickPigeon(dt);
@@ -339,26 +340,24 @@ function play(dt){
   checkMission();
   tickTrail(dt, G.P.boost);
 
-  /* ---------- CAMERA: strictly locked behind player ---------- */
-  G.shake = Math.max(0, G.shake - dt*2);
-
-  const camBack = 14 + G.P.boost * 3;
-
-  // Snap X/Z behind player. Y smoothly follows target height only.
-  cam.position.x = G.P.x - fx * camBack;
-  cam.position.z = G.P.z - fz * camBack;
-  cam.position.y += ((G.P.y + 3.2) - cam.position.y) * (1 - Math.exp(-8 * dt));
-
-  // Look slightly forward, roughly level with the player.
+  /* ---------- CAMERA: FIXED behind player, NEVER rotates ----------
+     Position is set directly from player each frame.
+     Look-at is always 25 units ahead along -Z.
+     No rotation. No yaw. No spin. */
+  cam.position.set(
+    G.P.x,
+    G.P.y + 3.2,
+    G.P.z + 14
+  );
+  cam.up.set(0, 1, 0);
   cam.lookAt(
-    G.P.x + fx * 25,
+    G.P.x,
     G.P.y + 1.2,
-    G.P.z + fz * 25
+    G.P.z - 25
   );
 
-  const fov = 64 + sp * 10 + G.P.boost * 8;
-  if (Math.abs(cam.fov - fov) > .05){
-    cam.fov += (fov - cam.fov) * (1 - Math.exp(-6 * dt));
+  if (cam.fov !== 64){
+    cam.fov = 64;
     cam.updateProjectionMatrix();
   }
 
