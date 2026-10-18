@@ -1,33 +1,33 @@
-import { T, cl, sm, setSeed, rnd, $ } from './utils.js';
-import { CFG, best, setBest, saveCfg } from './config.js';
-import { G, dist, score } from './game.js';
+import { T, cl, setSeed, rnd, $ } from './utils.js';
+import { CFG, best, saveCfg } from './config.js';
+import { G, dist } from './game.js';
 import { R, S, cam, PIXEL, setPR, resize } from './scene.js';
 import { initInput, K, INPUT, stick } from './input.js';
-import { initAudio, sfx, tickAudio, setGain, resumeAudio } from './audio.js';
-import { banner, say, tickHud, checkMission, MS } from './ui.js';
+import { sfx, tickAudio, setGain } from './audio.js';
+import { say, tickHud, checkMission } from './ui.js';
 
-import { skyM, sky, palette } from './sky.js';
+import { sky, palette } from './sky.js';
 import { gm, ground } from './world/ground.js';
-import { town, bm, cnm, wm, laySt } from './world/town.js';
+import { town, laySt } from './world/town.js';
 import { traf, updCars, pedG, updPeds } from './world/traffic.js';
 import { cm, cls, NC, spawnCloud, recycleClouds, attachEyes } from './world/clouds.js';
-import { sl, ob, rg, pattern, slice, rebuildSlices } from './world/items.js';
+import { sl, ob, rg, pattern, rebuildSlices } from './world/items.js';
 import { dave, animD } from './player/dave.js';
-import { trail, streaks, tp, tg, tickTrail } from './player/trail.js';
-import { room, fl, flb, ceil, roof, rm, lamp, tv, tickTV, clkM, clkH, dust, rebuildTablePizza } from './room/livingroom.js';
+import { tp, tickTrail } from './player/trail.js';
+import { room, tickTV, rebuildTablePizza } from './room/livingroom.js';
 import { startIntro, skipIntro, introStep } from './room/intro.js';
-import { pig, tickPigeon, birds, tickBirds, hero, plane, ufo, heli, tickFlybys, resetFlybys, resetBirds, resetPigeon } from './creatures.js';
-import { earth, atm, pl2, planetRed, planetBlue, planetGreen, star1, star2, bhCore, bhDisk, aurora, auroraMat, auroraMat2, celest, shooterLines, tickSpace } from './space.js';
-import { debris, tickDebris, WX, tickWeather, resetWeather, setCrashed } from './effects.js';
-import { mkSlice, setPizzaModel } from './pizza.js';
+import { tickPigeon, tickBirds, tickFlybys, resetFlybys, resetBirds, resetPigeon } from './creatures.js';
+import { tickSpace } from './space.js';
+import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
+import { setPizzaModel } from './pizza.js';
 
-/* eyes (must be attached to clouds) */
+/* ---------- Cloud eyes ---------- */
 const eyeG = [];
-for (let i=0;i<16;i++){
+for (let i = 0; i < 16; i++){
   const g = new T.Group();
   for (const sg of [-1,1]){
     const e = new T.Mesh(new T.SphereGeometry(1,10,8), new T.MeshBasicMaterial({color:0xf6f6ee}));
-    e.position.x = sg*1.7;
+    e.position.x = sg * 1.7;
     e.add(new T.Mesh(new T.SphereGeometry(.45,8,6), new T.MeshBasicMaterial({color:0x111111})));
     g.add(e);
   }
@@ -40,30 +40,17 @@ attachEyes(eyeG);
 
 function updEyes(){
   const _v = new T.Vector3();
-  for (let i=0;i<NC;i++){
+  for (let i = 0; i < NC; i++){
     const g = cls[i].eg;
     if (!g) continue;
     const d = _v.subVectors(cam.position, g.position).normalize();
-    const bl = Math.sin(G.tt*.8 + i*3.1) > .975 ? .12 : 1;
+    const bl = Math.sin(G.tt * .8 + i * 3.1) > .975 ? .12 : 1;
     g.scale.y = g.scale.x * bl;
     g.children.forEach(e => e.children[0].position.copy(d).multiplyScalar(.6));
   }
 }
 
-/* pigeon quotes */
-export const QUOTES = [
-  '"Never trust a cloud that knows your name."',
-  '"Have you ever seen a pigeon land on another pigeon? Exactly."',
-  '"The secret to flying is mostly not falling."',
-  '"Up is just down that\'s changed its mind."',
-  '"I\'ve seen the Golden Door. It\'s mostly door."',
-  '"Pizza is a circle that wants to be a triangle."'
-];
-
-/* attach quotes to pigeon module for talking */
-import('./ui.js').then(() => {});
-
-/* pizza.glb */
+/* ---------- pizza.glb ---------- */
 if (T.GLTFLoader){
   new T.GLTFLoader().load('assets/pizza.glb', gl => {
     const m = gl.scene;
@@ -74,14 +61,14 @@ if (T.GLTFLoader){
     const w = new T.Group(); w.add(m);
     const k = 2.6 / Math.max(sz.x, sz.z);
     w.scale.setScalar(k);
-    if (sz.y > Math.max(sz.x, sz.z)*.8){ m.rotation.x = -Math.PI/2; }
+    if (sz.y > Math.max(sz.x, sz.z) * .8) m.rotation.x = -Math.PI/2;
     setPizzaModel(w);
     rebuildSlices();
     rebuildTablePizza();
   }, undefined, () => {});
 }
 
-/* settings */
+/* ---------- settings ---------- */
 function updateSettingsLabels(){
   $('so').textContent = 'Sound: ' + (CFG.snd ? 'on' : 'off');
   $('iv').textContent = 'Invert up/down: ' + (CFG.inv ? 'on' : 'off');
@@ -93,24 +80,24 @@ $('iv').onclick = () => { CFG.inv = !CFG.inv; saveCfg(); updateSettingsLabels();
 $('lw').onclick = () => {
   CFG.low = !CFG.low;
   saveCfg();
-  setPR(CFG.low ? 1 : Math.min(window.devicePixelRatio||1, 2));
+  setPR(CFG.low ? 1 : Math.min(window.devicePixelRatio || 1, 2));
   updateSettingsLabels();
 };
 
-/* mode transitions */
-export function startPlay(){
+/* ---------- mode transitions ---------- */
+function startPlay(){
   G.mode = 'play';
   G.P.x = 50;
-  G.P.y = 1.45;
   G.P.z = 51.9;
   G.SZ = G.P.z;
   G.P.fs = 8;
+  // NOTE: do NOT reset G.P.y — Dave should keep his launch altitude
   room.visible = false;
   $('sk').classList.add('h');
   ['sc','di','ms','bb','bo','pb'].forEach(id => $(id).classList.remove('h'));
   say('RIGHT THEN, DAVE. WHERE TO?', 4.5);
   G.nextZ = G.P.z - 60;
-  for (let i=0;i<NC;i++) spawnCloud(i, true);
+  for (let i = 0; i < NC; i++) spawnCloud(i, true);
 }
 
 function restart(){
@@ -135,8 +122,8 @@ function resetRun(){
   G.P.vx = G.P.vy = 0; G.P.fs = 0; G.P.boost = 0; G.P.meter = 1; G.P.hit = 0;
   G.SZ = G.P.z;
   [sl, ob, rg].forEach(a => a.forEach(o => o.visible = false));
-  for (let i=0;i<NC;i++) spawnCloud(i, true);
-  for (let k=0;k<5;k++) pattern(G.P.z - 130 - k*85);
+  for (let i = 0; i < NC; i++) spawnCloud(i, true);
+  for (let k = 0; k < 5; k++) pattern(G.P.z - 130 - k*85);
   G.nextZ = G.P.z - 60;
   tp.fill(-9999);
   G.hc = [1e9, 1e9];
@@ -148,22 +135,23 @@ function resetRun(){
 }
 
 initInput(togglePause);
-$('go').onclick = startIntro;
-$('sk').onclick = skipIntro;
-$('pb').onclick = togglePause;
-$('rs').onclick = togglePause;
+$('go').onclick  = startIntro;
+$('sk').onclick  = skipIntro;
+$('pb').onclick  = togglePause;
+$('rs').onclick  = togglePause;
 $('rst').onclick = restart;
 updateSettingsLabels();
 
-/* sky/aurora update helpers */
+/* ---------- aurora helper ---------- */
+import { aurora, aurora2 } from './space.js';
 function tickAurora(){
   aurora.position.set(G.P.x, G.P.y + 400, G.P.z - 2200);
   aurora2.position.set(G.P.x, G.P.y + 350, G.P.z - 2100);
-  aurora.rotation.z = Math.sin(G.tt*.15)*.15;
-  aurora2.rotation.z = .4 + Math.sin(G.tt*.2)*.2;
+  aurora.rotation.z = Math.sin(G.tt * .15) * .15;
+  aurora2.rotation.z = .4 + Math.sin(G.tt * .2) * .2;
 }
 
-/* main play step */
+/* ---------- play step ---------- */
 function play(dt){
   let ix = cl(stick.x + ((K.ArrowRight||K.KeyD)?1:0) - ((K.ArrowLeft||K.KeyA)?1:0), -1, 1);
   let iy = cl(stick.y + ((K.ArrowUp||K.KeyW)?1:0) - ((K.ArrowDown||K.KeyS)?1:0), -1, 1);
@@ -171,12 +159,12 @@ function play(dt){
 
   const wb = (INPUT.boostBtn || K.Space || K.ShiftLeft) && G.P.meter > .03;
   G.P.boost += ((wb ? 1 : 0) - G.P.boost) * (1 - Math.exp(-5*dt));
-  G.P.meter = cl(G.P.meter + (wb ? -.26 : .09)*dt);
+  G.P.meter = cl(G.P.meter + (wb ? -.26 : .09) * dt);
   if (wb && !G.P.wasB) sfx.boost();
   G.P.wasB = wb;
 
   const base = 38 + Math.min(22, dist()/90);
-  G.P.fs += (base*(1 + G.P.boost*.9)*(G.P.hit > 0 ? .55 : 1) - G.P.fs) * (1 - Math.exp(-3*dt));
+  G.P.fs += (base * (1 + G.P.boost*.9) * (G.P.hit > 0 ? .55 : 1) - G.P.fs) * (1 - Math.exp(-3*dt));
   G.P.hit = Math.max(0, G.P.hit - dt);
   G.P.vx += (ix*32 - G.P.vx) * (1 - Math.exp(-4*dt));
   G.P.vy += (iy*26*(1 + G.P.boost*.9) + 6 - G.P.vy) * (1 - Math.exp(-3*dt));
@@ -216,7 +204,7 @@ function play(dt){
     u.age += dt;
     o.scale.setScalar(Math.min(1, u.age*2) * (u.gold ? 1.5 : 1));
     o.rotation.y += dt*2.2;
-    o.rotation.z = Math.sin(G.tt*2 + o.id)*.3;
+    o.rotation.z = Math.sin(G.tt*2 + o.id) * .3;
     const dx = G.P.x - o.position.x, dy = G.P.y - o.position.y, dz = G.P.z - o.position.z;
     const d2 = dx*dx + dy*dy + dz*dz;
     if (d2 < 400){
@@ -239,7 +227,7 @@ function play(dt){
     o.scale.setScalar(Math.min(1, u.age*1.5));
     const k = u.k;
     if (k === 0) o.children[0].children[0].parent.rotation.z += dt*.8;
-    else o.rotation.y += dt*(k === 1 ? .5 : .9);
+    else o.rotation.y += dt * (k === 1 ? .5 : .9);
     if (k === 2) o.rotation.z += dt*.7;
     const dx = G.P.x - o.position.x, dy = G.P.y - o.position.y, dz = G.P.z - o.position.z;
     const r = (k === 0 ? 6.5 : k === 1 ? 6.2 : 6.6) + 2;
@@ -273,18 +261,13 @@ function play(dt){
     if (o.position.z > G.P.z + 40) o.visible = false;
   }
 
-  /* pigeon / creatures */
   tickPigeon(dt);
   tickBirds(dt);
   tickFlybys(dt);
-
-  /* missions */
   checkMission();
-
-  /* trail */
   tickTrail(dt, G.P.boost);
 
-  /* camera */
+  /* camera (steep POV) */
   G.shake = Math.max(0, G.shake - dt*2);
   const kc = 1 - Math.exp(-6*dt);
   cam.position.x += (G.P.x - G.P.vx*.3 + (Math.random()-.5)*G.shake*.7 - cam.position.x) * kc;
@@ -298,19 +281,16 @@ function play(dt){
   const fov = 64 + sp*10 + G.P.boost*8;
   if (Math.abs(cam.fov - fov) > .05){ cam.fov += (fov - cam.fov)*kc; cam.updateProjectionMatrix(); }
 
-  /* world updates */
   tickWeather(dt);
   recycleClouds();
   tickSpace(dt);
   tickDebris(dt);
   updEyes();
   tickHud(dt);
-
-  /* audio */
   tickAudio(sp, G.P.boost, G.stageI);
 }
 
-/* main loop */
+/* ---------- main loop ---------- */
 let last = performance.now();
 let fpsA = 16, fpsC = 0;
 
@@ -328,15 +308,18 @@ function frame(now){
   }
 
   if (G.mode === 'title'){
-    skipIntro(); // no-op double-guard
-    startIntro(); G.mode = 'intro';
+    /* static preview: TV flickers, camera gently sways */
+    tickTV(dt, true);
+    cam.position.x = 50 + Math.sin(G.tt*.4) * .8;
+    cam.position.y = 3.4;
+    cam.position.z = 63;
+    cam.lookAt(50, 1.6, 46);
   } else if (G.mode === 'intro'){
     if (introStep(dt)) startPlay();
   } else if (G.mode === 'play'){
     play(dt);
   }
 
-  /* world layout */
   const px = G.mode === 'play' ? G.P.x : 50;
   const pz = G.mode === 'play' ? G.P.z : 51.9;
   const cx = Math.floor(px/100), cz = Math.floor(pz/100);
@@ -344,30 +327,32 @@ function frame(now){
 
   ground.position.x = px; ground.position.z = pz;
   ground.visible = G.alt < 1900;
-  town.visible = G.alt < 1500;
-  traf.visible = G.alt < 700;
-  pedG.visible = G.alt < 300;
+  town.visible   = G.alt < 1500;
+  traf.visible   = G.alt < 700;
+  pedG.visible   = G.alt < 300;
   if (traf.visible) updCars(px, pz);
   if (pedG.visible) updPeds(px, pz);
 
   sky.position.copy(cam.position);
-  cm.uniforms.uS.value = R.domElement.height / (2*Math.tan(cam.fov*Math.PI/360));
+  cm.uniforms.uS.value = R.domElement.height / (2 * Math.tan(cam.fov * Math.PI / 360));
   palette();
   tickAurora();
 
   R.render(S, cam);
 }
 
-/* boot */
-setPR(CFG.low ? 1 : Math.min(window.devicePixelRatio||1, 2));
+/* ---------- boot ---------- */
+setPR(CFG.low ? 1 : Math.min(window.devicePixelRatio || 1, 2));
 resize();
-laySt(0,0);
-for (let i=0;i<NC;i++) spawnCloud(i, true);
+laySt(0, 0);
+for (let i = 0; i < NC; i++) spawnCloud(i, true);
 palette();
 
-/* start on title screen (frozen) */
+/* Title-screen preview: Dave floating in his room */
+G.P.x = 50; G.P.y = 1.45; G.P.z = 51.9;
+dave.position.set(50, 1.45, 51.9);
+dave.visible = true;
+room.visible = true;
 G.mode = 'title';
-document.getElementById('go').onclick = () => {
-  startIntro();
-};
+
 requestAnimationFrame(frame);
