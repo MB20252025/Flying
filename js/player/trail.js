@@ -59,9 +59,10 @@ for (let i=0;i<NS;i++) rs(i, -rnd()*45);
 
 export function tickTrail(dt, boost){
   th = (th+1) % NT;
-  tp[th*3]   = G.P.x + (Math.random()-.5);
+  const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
+  tp[th*3]   = G.P.x - fx * 1.5 + (Math.random()-.5);
   tp[th*3+1] = G.P.y + (Math.random()-.5);
-  tp[th*3+2] = G.P.z + 1.5;
+  tp[th*3+2] = G.P.z - fz * 1.5;
   tg.attributes.position.needsUpdate = true;
   trail.material.uniforms.uSize.value = 1.4 + boost * 1.8;
 
