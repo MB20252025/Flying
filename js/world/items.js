@@ -70,28 +70,57 @@ function obst(x,y,z,k){
   if (o){ o.userData.k = k; o.userData.kids.forEach((c,i) => c.visible = (i===k)); }
 }
 
-export function pattern(z){
-  const cx = G.P.x + (rnd()-.5)*60;
-  const cy = Math.max(20, G.P.y + (rnd()-.4)*40);
-  const r  = rnd();
+/*
+  pattern(ax, ay, az, fx, fz)
+    ax, ay, az  = centre of the pattern, ahead of the player
+    fx, fz      = forward direction (unit vector, y-component = 0)
+  All item offsets below are interpreted in the flight-relative frame:
+    right = (fz, 0, -fx)
+    up    = (0, 1, 0)
+    fwd   = (fx, 0, fz)
+*/
+export function pattern(ax, ay, az, fx, fz){
+  const rx = fz, rz = -fx;
+  const place = (ox, oy, of) => ({
+    x: ax + rx * ox + fx * of,
+    y: ay + oy,
+    z: az + rz * ox + fz * of
+  });
+
+  const r = rnd();
   const diff = Math.min(.35, dist()/6000);
 
   if (r < .36){
     const d = rnd() < .5 ? 1 : -1;
-    for (let i=0;i<9;i++) slice(cx + Math.sin(i*.7)*22*d, cy + Math.cos(i*.7)*8, z-i*14, i===4 && rnd()<.3);
+    for (let i = 0; i < 9; i++){
+      const p = place(Math.sin(i*.7) * 22 * d, Math.cos(i*.7) * 8, i * 14);
+      slice(p.x, p.y, p.z, i === 4 && rnd() < .3);
+    }
   } else if (r < .58){
-    const m = put(rg, cx, cy, z);
+    const m = put(rg, ax, ay, az);
     if (m) m.userData.done = false;
-    slice(cx, cy, z+30); slice(cx, cy, z+15); slice(cx, cy, z-18);
+    [30, 15, -18].forEach(of => {
+      const p = place(0, 0, of);
+      slice(p.x, p.y, p.z);
+    });
   } else if (r < .58 + .27 + diff){
-    const g = (rnd()*3|0)-1;
-    for (let i=-1;i<=1;i++) if (i!==g) obst(cx+i*26, cy, z, rnd()*3|0);
-    for (let j=-1;j<=1;j++) slice(cx+g*26, cy, z+j*20);
+    const gap = (rnd()*3|0) - 1;
+    for (let i = -1; i <= 1; i++){
+      if (i !== gap){
+        const p = place(i * 26, 0, 0);
+        obst(p.x, p.y, p.z, rnd()*3|0);
+      }
+    }
+    for (let j = -1; j <= 1; j++){
+      const p = place(gap * 26, 0, j * 20);
+      slice(p.x, p.y, p.z);
+    }
   } else {
-    obst(cx, cy, z, 2);
-    for (let i=0;i<8;i++){
-      const a = i*.785;
-      slice(cx + Math.cos(a)*17, cy + Math.sin(a)*13, z, i===0 && rnd()<.4);
+    obst(ax, ay, az, 2);
+    for (let i = 0; i < 8; i++){
+      const a = i * .785;
+      const p = place(Math.cos(a) * 17, Math.sin(a) * 13, 0);
+      slice(p.x, p.y, p.z, i === 0 && rnd() < .4);
     }
   }
 }
