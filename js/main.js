@@ -22,6 +22,9 @@ import { tickKingKong, resetKingKong } from './kingkong.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
+const YAW_RATE = 2.2;              // radians/sec at full input
+const SPAWN_LEAD = 440;            // how far ahead to place item patterns
+
 /* ---------- Cloud eyes ---------- */
 function makeEye(){
   const g = new T.Group();
@@ -140,13 +143,14 @@ function startPlay(){
   G.mode = 'play';
   G.P.x = 50;
   G.P.z = 51.9;
-  G.SZ = G.P.z;
+  G.P.yaw = 0;
   G.P.fs = 8;
   room.visible = false;
   $('sk').classList.add('h');
   ['sc','di','ms','bb','bo','pb'].forEach(id => $(id).classList.remove('h'));
   say('RIGHT THEN, DAVE. WHERE TO?', 4.5);
-  G.nextZ = G.P.z - 60;
+  G.spawnAccum = 0;
+  G.spawnGap = 60;
   for (let i = 0; i < NC; i++) spawnCloud(i, true);
 }
 
@@ -169,13 +173,18 @@ function resetRun(){
   setSeed(20260 + (Math.random()*9999|0));
   G.Q = { slices:0, rings:0, bumps:0, clean:0, bonus:0, golds:0 };
   G.mi = 0; G.mbase = 0;
-  G.P.vx = G.P.vy = 0; G.P.fs = 0; G.P.boost = 0; G.P.meter = 1; G.P.hit = 0;
-  G.SZ = G.P.z;
-  resetEyeTracker(G.P.z);
+  G.P.vx = G.P.vy = 0; G.P.fs = 0; G.P.boost = 0; G.P.meter = 1; G.P.hit = 0; G.P.yaw = 0;
+  G.totalDist = 0;
+  G.spawnAccum = 0;
+  G.spawnGap = 60;
+  resetEyeTracker();
   [sl, ob, rg].forEach(a => a.forEach(o => o.visible = false));
   for (let i = 0; i < NC; i++) spawnCloud(i, true);
-  for (let k = 0; k < 5; k++) pattern(G.P.z - 130 - k*85);
-  G.nextZ = G.P.z - 60;
+  const fx0 = Math.sin(G.P.yaw), fz0 = -Math.cos(G.P.yaw);
+  for (let k = 0; k < 5; k++){
+    const ahead = 130 + k * 85;
+    pattern(G.P.x + fx0*ahead, G.P.y, G.P.z + fz0*ahead, fx0, fz0);
+  }
   tp.fill(-9999);
   G.hc = [1e9, 1e9];
   resetFlybys();
@@ -213,10 +222,14 @@ function play(dt){
   if (wb && !G.P.wasB) sfx.boost();
   G.P.wasB = wb;
 
+  /* turn */
+  G.P.yaw += ix * YAW_RATE * dt;
+  const fx = Math.sin(G.P.yaw);
+  const fz = -Math.cos(G.P.yaw);
+
   const base = 38 + Math.min(22, dist()/90);
   G.P.fs += (base * (1 + G.P.boost*.9) * (G.P.hit > 0 ? .55 : 1) - G.P.fs) * (1 - Math.exp(-3*dt));
   G.P.hit = Math.max(0, G.P.hit - dt);
-  G.P.vx += (ix*32 - G.P.vx) * (1 - Math.exp(-4*dt));
   G.P.vy += (iy*26*(1 + G.P.boost*.9) + 6 - G.P.vy) * (1 - Math.exp(-3*dt));
 
   for (const c of cls){
@@ -230,23 +243,32 @@ function play(dt){
     c.in = i;
   }
 
-  G.P.x += G.P.vx*dt;
-  G.P.y += G.P.vy*dt;
-  G.P.z -= G.P.fs*dt;
+  /* directional movement */
+  G.P.x += fx * G.P.fs * dt;
+  G.P.y += G.P.vy * dt;
+  G.P.z += fz * G.P.fs * dt;
   if (G.P.y < 14){ G.P.y = 14; G.P.vy = Math.max(G.P.vy, 0); }
   G.Q.clean = G.Q.bumps ? Math.max(0, G.Q.clean + G.P.fs*dt) : G.Q.clean + G.P.fs*dt;
   G.alt = G.P.y;
+  G.totalDist += G.P.fs * dt;
 
   const sp = cl((G.P.fs - 30)/70);
   dave.position.set(G.P.x, G.P.y, G.P.z);
+  dave.rotation.y = G.P.yaw;
   dave.visible = G.P.hit <= 0 || ((G.P.hit*12)|0) % 2 === 0;
   animD(dt, -.4 - .7*sp - .15*G.P.boost + .5*iy, -ix*.6, .3 + .9*G.P.boost + .2*Math.abs(ix), sp, G.tt);
 
-  while (G.P.z < G.nextZ){
-    pattern(G.P.z - 440);
-    G.nextZ -= Math.max(55, 88 - dist()/150);
+  /* spawn items ahead */
+  G.spawnAccum += G.P.fs * dt;
+  while (G.spawnAccum > G.spawnGap){
+    G.spawnAccum -= G.spawnGap;
+    const ax = G.P.x + fx * SPAWN_LEAD;
+    const az = G.P.z + fz * SPAWN_LEAD;
+    pattern(ax, G.P.y, az, fx, fz);
+    G.spawnGap = Math.max(55, 88 - dist()/150);
   }
 
+  /* slices */
   for (const o of sl){
     if (!o.visible) continue;
     const u = o.userData;
@@ -265,9 +287,13 @@ function play(dt){
       if (u.gold){ G.Q.golds++; say('Golden slice! Dave: "Posh."', 1.8); }
       else G.Q.slices++;
       sfx.chime(u.gold);
-    } else if (o.position.z > G.P.z + 30) o.visible = false;
+    } else {
+      const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
+      if (behind < -50) o.visible = false;
+    }
   }
 
+  /* obstacles */
   for (const o of ob){
     if (!o.visible) continue;
     const u = o.userData;
@@ -286,16 +312,19 @@ function play(dt){
       sfx.hit();
       say(['Dave: "Ow. Rude."', 'Dave: "Who parks a sofa up here?"', 'Dave: "Mind the doughnut, mate."'][Math.random()*3|0], 2);
     }
-    if (o.position.z > G.P.z + 40) o.visible = false;
+    const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
+    if (behind < -60) o.visible = false;
   }
 
+  /* rings */
   for (const o of rg){
     if (!o.visible) continue;
     const u = o.userData;
     u.age += dt;
     o.material.color.setHSL((G.tt*.3 + o.id*.1) % 1, .8, .65);
     o.scale.setScalar(Math.min(1, u.age*1.5));
-    if (!u.done && o.position.z > G.P.z){
+    const alongF = (G.P.x - o.position.x) * fx + (G.P.z - o.position.z) * fz;
+    if (!u.done && alongF > 0){
       u.done = true;
       const dx = G.P.x - o.position.x, dy = G.P.y - o.position.y;
       if (dx*dx + dy*dy < 80){
@@ -305,7 +334,8 @@ function play(dt){
         G.shake = .3;
       }
     }
-    if (o.position.z > G.P.z + 40) o.visible = false;
+    const behind = (o.position.x - G.P.x) * fx + (o.position.z - G.P.z) * fz;
+    if (behind < -60) o.visible = false;
   }
 
   tickPigeon(dt);
@@ -315,16 +345,24 @@ function play(dt){
   checkMission();
   tickTrail(dt, G.P.boost);
 
+  /* camera */
   G.shake = Math.max(0, G.shake - dt*2);
-  const kc = 1 - Math.exp(-6*dt);
-  cam.position.x += (G.P.x - G.P.vx*.3 + (Math.random()-.5)*G.shake*.7 - cam.position.x) * kc;
-  cam.position.y += (G.P.y + 3.2 + cl(-G.P.vy*.2, -7, 7) + (Math.random()-.5)*(G.shake*.7 + G.P.boost*.08) - cam.position.y) * kc;
-  cam.position.z += (G.P.z + 11 + G.P.boost*3.5 - cam.position.z) * kc;
+  const kc = 1 - Math.exp(-8*dt);
+  const camBack = 11 + G.P.boost * 3.5;
+  const camUp = 3.2 + cl(-G.P.vy*.2, -7, 7);
+  const targetX = G.P.x - fx * camBack;
+  const targetY = G.P.y + camUp;
+  const targetZ = G.P.z - fz * camBack;
+  cam.position.x += (targetX - cam.position.x) * kc;
+  cam.position.y += (targetY - cam.position.y) * kc;
+  cam.position.z += (targetZ - cam.position.z) * kc;
 
-  const pvy = cl(G.P.vy, -42, 42), pvx = cl(G.P.vx, -32, 32);
-  const look = new T.Vector3(G.P.x + pvx*1.0, G.P.y + .6 + pvy*2.0, G.P.z - 25);
-  cam.lookAt(look);
-  cam.rotateZ(-pvx*.022);
+  const pvy = cl(G.P.vy, -42, 42);
+  const lookX = G.P.x + fx * 25;
+  const lookY = G.P.y + .6 + pvy * 2.0;
+  const lookZ = G.P.z + fz * 25;
+  cam.lookAt(lookX, lookY, lookZ);
+  cam.rotateZ(-ix * 0.15);
   const fov = 64 + sp*10 + G.P.boost*8;
   if (Math.abs(cam.fov - fov) > .05){ cam.fov += (fov - cam.fov)*kc; cam.updateProjectionMatrix(); }
 
@@ -397,7 +435,7 @@ laySt(0, 0);
 for (let i = 0; i < NC; i++) spawnCloud(i, true);
 palette();
 
-G.P.x = 50; G.P.y = 1.45; G.P.z = 51.9;
+G.P.x = 50; G.P.y = 1.45; G.P.z = 51.9; G.P.yaw = 0;
 dave.position.set(50, 1.45, 51.9);
 dave.visible = true;
 room.visible = true;
