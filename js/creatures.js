@@ -26,31 +26,41 @@ export function tickPigeon(dt){
   pigT -= dt;
   if (pigT <= 0 && !pig.visible){
     pig.visible = true; pigSaid = false;
-    pig.position.set(G.P.x + (rnd()<.5?-1:1)*22, G.P.y+4, G.P.z-300);
+    const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
+    pig.position.set(
+      G.P.x + fx * 300 + (rnd() < .5 ? -22 : 22),
+      G.P.y + 4,
+      G.P.z + fz * 300
+    );
     pigT = 30;
   }
   if (!pig.visible) return;
-  pig.position.z -= 28*dt;
+  const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
+  pig.position.x -= fx * 28 * dt;
+  pig.position.z -= fz * 28 * dt;
   pig.position.y += Math.sin(G.tt*2)*.05;
-  pig.userData.w1.rotation.z = Math.sin(G.tt*14)*.6;
-  pig.userData['w-1'].rotation.z = Math.sin(G.tt*14)*.6;
+  pig.userData.w1.rotation.z  =  Math.sin(G.tt*14)*.6;
+  pig.userData['w-1'].rotation.z = -Math.sin(G.tt*14)*.6;
+
+  const dx = pig.position.x - G.P.x;
   const dz = pig.position.z - G.P.z;
-  if (!pigSaid && dz > -70){
+  const alongF = dx * fx + dz * fz;
+  if (!pigSaid && alongF < 70 && alongF > -20){
     pigSaid = true;
     say('Pigeon: ' + QUOTES[qi++ % QUOTES.length], 4.5);
   }
-  if (dz > 40) pig.visible = false;
+  if (alongF < -50) pig.visible = false;
 }
 
 /* ---------- BIRDS ---------- */
 const BT = [
-  {c:0x8a6a4a,w:0x6a4a2a,s:.55,f:24,v:24,n:9},   // sparrow
-  {c:0xf4f4f4,w:0xcfd5dc,s:1.2,f:7,v:19,n:6},    // gull
-  {c:0x14141a,w:0x0b0b10,s:1.1,f:9,v:21,n:6},    // crow
-  {c:0x6a4a2e,w:0x3e2a1a,s:2.6,f:1.6,v:17,n:2},  // eagle
-  {c:0x2fd04a,w:0xffd23a,s:.9,f:12,v:23,n:7},    // parrot
-  {c:0x2a3f8a,w:0x5a7fdc,s:.35,f:38,v:30,n:12},  // swallow
-  {c:0xc0783a,w:0x8a5a2a,s:1.9,f:5,v:22,n:2}     // hawk
+  {c:0x8a6a4a,w:0x6a4a2a,s:.55,f:24,v:24,n:9},
+  {c:0xf4f4f4,w:0xcfd5dc,s:1.2,f:7,v:19,n:6},
+  {c:0x14141a,w:0x0b0b10,s:1.1,f:9,v:21,n:6},
+  {c:0x6a4a2e,w:0x3e2a1a,s:2.6,f:1.6,v:17,n:2},
+  {c:0x2fd04a,w:0xffd23a,s:.9,f:12,v:23,n:7},
+  {c:0x2a3f8a,w:0x5a7fdc,s:.35,f:38,v:30,n:12},
+  {c:0xc0783a,w:0x8a5a2a,s:1.9,f:5,v:22,n:2}
 ];
 const bgW = new T.BoxGeometry(2.2,.07,.8);
 const bgS = new T.SphereGeometry(.5,6,5);
@@ -81,11 +91,12 @@ function spawnFlock(){
              : [3,4,4,5];
   const ti = pool[rnd()*pool.length|0], ty = BT[ti];
   const side = rnd()<.5 ? -1 : 1;
-  const px = G.P.x + side*(110 + rnd()*120);
+  const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
+  const px = G.P.x + fx*(250+rnd()*120) + fz*side*(110+rnd()*120);
   const py = G.P.y + (rnd()-.4)*70;
-  const pz = G.P.z - (250 + rnd()*150);
-  const vz = (rnd()<.5 ? .5 : -.5) * ty.v;
-  const vx = -side*ty.v*.7;
+  const pz = G.P.z + fz*(250+rnd()*120) - fx*side*(110+rnd()*120);
+  const vz = fz * ty.v;
+  const vx = fx * ty.v;
   for (let k=0;k<ty.n;k++){
     const b = birds.find(q => !q.on);
     if (!b) return;
@@ -95,7 +106,7 @@ function spawnFlock(){
     b.g.scale.setScalar(ty.s*1.6);
     b.v.set(vx,0,vz);
     b.g.position.set(px + (k%2?1:-1)*k*4, py + (rnd()-.5)*6, pz + k*5);
-    b.g.rotation.y = Math.atan2(-vx,-vz);
+    b.g.rotation.y = Math.atan2(vx, vz) + Math.PI;
     b.t = rnd()*6;
   }
 }
@@ -114,7 +125,11 @@ export function tickBirds(dt){
     b.w[0].rotation.z =  Math.sin(b.t)*a;
     b.w[1].rotation.z = -Math.sin(b.t)*a;
     g.position.y += Math.cos(b.t)*.03;
-    if (g.position.z > G.P.z+60 || g.position.z < G.P.z-750 || Math.abs(g.position.x-G.P.x) > 520 || Math.abs(g.position.y-G.P.y) > 450){
+
+    const dx = g.position.x - G.P.x;
+    const dz = g.position.z - G.P.z;
+    const behind = -(dx * Math.sin(G.P.yaw) + dz * -Math.cos(G.P.yaw));
+    if (behind > 60 || behind < -900 || Math.abs(g.position.y - G.P.y) > 450){
       b.on = false; g.visible = false;
     }
   }
@@ -197,21 +212,37 @@ export const heli  = mkHeli();
 
 let fbT = 14, heroOn = false, planeOn = false, ufoOn = false, heliOn = false;
 let heroSaid = false, ufoSaid = false, heliT = 40;
+let planeVelX = 0;
 
 function spawnFly(){
   const r = rnd(), sd = rnd()<.5 ? -1 : 1;
+  const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
+  const rx = Math.cos(G.P.yaw), rz = Math.sin(G.P.yaw);
+
   if (r < .58 && G.alt < 2400 && !heroOn){
     heroOn = true; heroSaid = false; hero.visible = true;
-    hero.position.set(G.P.x + sd*(14+rnd()*8), G.P.y + (rnd()-.5)*10, G.P.z+80);
+    hero.position.set(
+      G.P.x + fx * 80 + rx * sd * 18,
+      G.P.y + (rnd()-.5)*10,
+      G.P.z + fz * 80 + rz * sd * 18
+    );
   } else if (r < .78 && G.alt > 100 && G.alt < 1700 && !planeOn){
     planeOn = true; plane.visible = true;
-    plane.position.set(G.P.x - sd*420, G.P.y + (rnd()-.3)*50, G.P.z-380);
-    plane.userData.vx = sd*85;
-    plane.rotation.y = -Math.PI/2*sd;
+    plane.position.set(
+      G.P.x - rx * sd * 420,
+      G.P.y + (rnd()-.3)*50,
+      G.P.z - rz * sd * 380
+    );
+    planeVelX = sd * 85;
+    plane.rotation.y = -Math.PI/2 * sd;
   } else if (G.alt > 400 && !ufoOn){
     ufoOn = true; ufoSaid = false; ufo.visible = true;
-    ufo.position.set(G.P.x - sd*500, G.P.y + rnd()*60, G.P.z-420);
-    ufo.userData.vx = sd*40;
+    ufo.position.set(
+      G.P.x - rx * sd * 500,
+      G.P.y + rnd()*60,
+      G.P.z - rz * sd * 420
+    );
+    ufo.userData.vx = sd * 40;
   }
 }
 
@@ -219,45 +250,80 @@ export function tickFlybys(dt){
   fbT -= dt;
   if (fbT <= 0){ spawnFly(); fbT = 15 + rnd()*16; }
 
+  const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
+
   if (heroOn){
-    hero.position.z -= (G.P.fs + 95)*dt;
+    /* Fixed 280 m/s — no longer scaled to player speed.
+       At base speed (~60) he still blasts past you.
+       At full boost (~780) you outrun him and he recedes behind. */
+    hero.position.x -= fx * 280 * dt;
+    hero.position.z -= fz * 280 * dt;
     hero.userData.cape.rotation.x = Math.sin(G.tt*16)*.12;
     hero.rotation.z = Math.sin(G.tt*2)*.1;
-    if (!heroSaid && hero.position.z < G.P.z){
+
+    const dx = hero.position.x - G.P.x;
+    const dz = hero.position.z - G.P.z;
+    const alongF = dx * fx + dz * fz;
+
+    if (!heroSaid && alongF < 30){
       heroSaid = true;
       say('Dave: "...was that a bloke in a cape? Show-off."', 3.5);
       burst(.8, 2500, .3);
     }
-    if (hero.position.z < G.P.z - 900){ heroOn = false; hero.visible = false; }
+    if (alongF < -900){ heroOn = false; hero.visible = false; }
   }
+
   if (planeOn){
-    plane.position.x += plane.userData.vx*dt;
+    const rx = Math.cos(G.P.yaw), rz = Math.sin(G.P.yaw);
+    plane.position.x += rx * planeVelX * dt;
+    plane.position.z += rz * planeVelX * dt;
     plane.userData.l1.visible = plane.userData.l2.visible = Math.sin(G.tt*8) > 0;
-    if (plane.position.z > G.P.z+80 || Math.abs(plane.position.x-G.P.x) > 650){ planeOn = false; plane.visible = false; }
+
+    const dx = plane.position.x - G.P.x;
+    const dz = plane.position.z - G.P.z;
+    if (Math.hypot(dx, dz) > 700){ planeOn = false; plane.visible = false; }
   }
+
   if (ufoOn){
-    ufo.position.x += ufo.userData.vx*dt;
+    const rx = Math.cos(G.P.yaw), rz = Math.sin(G.P.yaw);
+    ufo.position.x += rx * ufo.userData.vx * dt;
+    ufo.position.z += rz * ufo.userData.vx * dt;
     ufo.position.y += Math.sin(G.tt*2)*.1;
     ufo.userData.ring.rotation.y += dt*3;
-    if (!ufoSaid && ufo.position.z > G.P.z-60){
+
+    const dx = ufo.position.x - G.P.x;
+    const dz = ufo.position.z - G.P.z;
+    const alongF = dx * fx + dz * fz;
+    if (!ufoSaid && alongF < 60){
       ufoSaid = true;
       say('Dave: "Aliens. Course there are."', 3);
     }
-    if (ufo.position.z > G.P.z+80 || Math.abs(ufo.position.x-G.P.x) > 700){ ufoOn = false; ufo.visible = false; }
+    if (alongF < -300 || Math.hypot(dx, dz) > 800){ ufoOn = false; ufo.visible = false; }
   }
+
   heliT -= dt;
   if (heliT <= 0 && !heliOn && G.alt < 1600){
     heliOn = true; heli.visible = true;
+    const rx = Math.cos(G.P.yaw), rz = Math.sin(G.P.yaw);
     const sd = Math.random()<.5 ? -1 : 1;
-    heli.position.set(G.P.x - sd*400, G.P.y+50, G.P.z-300);
+    heli.position.set(
+      G.P.x - rx * sd * 400,
+      G.P.y + 50,
+      G.P.z - rz * sd * 300
+    );
     heli.userData.sd = sd;
   }
   if (heliOn){
-    heli.position.x += heli.userData.sd*55*dt;
+    const rx = Math.cos(G.P.yaw), rz = Math.sin(G.P.yaw);
+    heli.position.x += rx * heli.userData.sd * 55 * dt;
+    heli.position.z += rz * heli.userData.sd * 55 * dt;
     heli.position.y += Math.sin(G.tt)*.1;
     const rotor = heli.children[2];
     rotor.rotation.y += dt*40;
-    if (Math.abs(heli.position.x - G.P.x) > 700){
+
+    const dx = heli.position.x - G.P.x;
+    const dz = heli.position.z - G.P.z;
+    if (Math.hypot(dx, dz) > 700){
       heliOn = false; heli.visible = false; heliT = 40 + Math.random()*30;
     }
   }
@@ -276,4 +342,4 @@ export function resetBirds(){
 
 export function resetPigeon(){
   pig.visible = false; pigT = 22;
-}
+      }
