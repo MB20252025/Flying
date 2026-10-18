@@ -1,4 +1,4 @@
-import { T, rnd, M, tex, $ } from '../utils.js';
+import { T, rnd, M, tex } from '../utils.js';
 import { S } from '../scene.js';
 import { mkSlice, gP } from '../pizza.js';
 
@@ -92,8 +92,6 @@ export const fl = [
 fl[0].scale.setScalar(.7);
 fl[0].position.set(0,.9,-.6);
 room.add(fl[0]);
-
-export const flb = fl.map(o => o.position.clone());
 
 /* --- floor / rug --- */
 pl(12,10,tex(256,256,(x,w,h)=>{
@@ -261,6 +259,9 @@ bx(1,3,1,0x6b3a2a,3,8.5,-1);
 
 fl.push(can, crisps, mug);
 
+/* === FIX: flb MUST be defined AFTER the last fl.push so it has one entry per item === */
+export const flb = fl.map(o => o.position.clone());
+
 /* --- extra details --- */
 const pFam = tex(140,110,(x,w,h)=>{
   x.fillStyle='#3a3020'; x.fillRect(0,0,w,h);
@@ -389,4 +390,4 @@ export function rebuildTablePizza(){
   if (!fl[0]) return;
   fl[0].remove(...fl[0].children);
   fl[0].add(...mkSlice().children);
-                  }
+             }
