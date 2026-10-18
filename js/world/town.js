@@ -187,7 +187,7 @@ export function laySt(cx, cz){
     const X = (A+.5)*100, Z = (Bq+.5)*100;
     const h = H(A,Bq,0), g = H(A,Bq,1);
     if (A===0 && Bq===0) cellStart(X,Z);
-    else if (A===0 && Bq===-5) B(X,-.2,Z,90,.2,90,0x55555c);   // ← King Kong tower cell
+    else if (A===-2 && Bq===-10) B(X,-.2,Z,90,.2,90,0x55555c);   // King Kong tower cell
     else if (h < .1) park(X,Z);
     else if (h < .14) petrol(X,Z);
     else if (h < .3) shops(X,Z,A,Bq);
