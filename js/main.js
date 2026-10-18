@@ -22,8 +22,8 @@ import { tickKingKong, resetKingKong } from './kingkong.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
-const YAW_RATE = 2.2;              // radians/sec at full input
-const SPAWN_LEAD = 440;            // how far ahead to place item patterns
+const YAW_RATE = 2.2;
+const SPAWN_LEAD = 440;
 
 /* ---------- Cloud eyes ---------- */
 function makeEye(){
@@ -222,7 +222,6 @@ function play(dt){
   if (wb && !G.P.wasB) sfx.boost();
   G.P.wasB = wb;
 
-  /* turn */
   G.P.yaw += ix * YAW_RATE * dt;
   const fx = Math.sin(G.P.yaw);
   const fz = -Math.cos(G.P.yaw);
@@ -243,7 +242,6 @@ function play(dt){
     c.in = i;
   }
 
-  /* directional movement */
   G.P.x += fx * G.P.fs * dt;
   G.P.y += G.P.vy * dt;
   G.P.z += fz * G.P.fs * dt;
@@ -258,7 +256,6 @@ function play(dt){
   dave.visible = G.P.hit <= 0 || ((G.P.hit*12)|0) % 2 === 0;
   animD(dt, -.4 - .7*sp - .15*G.P.boost + .5*iy, -ix*.6, .3 + .9*G.P.boost + .2*Math.abs(ix), sp, G.tt);
 
-  /* spawn items ahead */
   G.spawnAccum += G.P.fs * dt;
   while (G.spawnAccum > G.spawnGap){
     G.spawnAccum -= G.spawnGap;
@@ -268,7 +265,6 @@ function play(dt){
     G.spawnGap = Math.max(55, 88 - dist()/150);
   }
 
-  /* slices */
   for (const o of sl){
     if (!o.visible) continue;
     const u = o.userData;
@@ -293,7 +289,6 @@ function play(dt){
     }
   }
 
-  /* obstacles */
   for (const o of ob){
     if (!o.visible) continue;
     const u = o.userData;
@@ -316,7 +311,6 @@ function play(dt){
     if (behind < -60) o.visible = false;
   }
 
-  /* rings */
   for (const o of rg){
     if (!o.visible) continue;
     const u = o.userData;
@@ -345,26 +339,32 @@ function play(dt){
   checkMission();
   tickTrail(dt, G.P.boost);
 
-  /* camera */
+  /* ---------- CAMERA: rigidly locked behind player ---------- */
   G.shake = Math.max(0, G.shake - dt*2);
-  const kc = 1 - Math.exp(-8*dt);
-  const camBack = 11 + G.P.boost * 3.5;
-  const camUp = 3.2 + cl(-G.P.vy*.2, -7, 7);
-  const targetX = G.P.x - fx * camBack;
-  const targetY = G.P.y + camUp;
-  const targetZ = G.P.z - fz * camBack;
-  cam.position.x += (targetX - cam.position.x) * kc;
-  cam.position.y += (targetY - cam.position.y) * kc;
-  cam.position.z += (targetZ - cam.position.z) * kc;
 
+  const camBack = 12 + G.P.boost * 3;
   const pvy = cl(G.P.vy, -42, 42);
-  const lookX = G.P.x + fx * 25;
-  const lookY = G.P.y + .6 + pvy * 2.0;
-  const lookZ = G.P.z + fz * 25;
-  cam.lookAt(lookX, lookY, lookZ);
-  cam.rotateZ(-ix * 0.15);
-  const fov = 64 + sp*10 + G.P.boost*8;
-  if (Math.abs(cam.fov - fov) > .05){ cam.fov += (fov - cam.fov)*kc; cam.updateProjectionMatrix(); }
+
+  // Horizontal: snap directly behind player (no lag)
+  cam.position.x = G.P.x - fx * camBack + (Math.random()-.5) * G.shake * .4;
+  cam.position.z = G.P.z - fz * camBack + (Math.random()-.5) * G.shake * .4;
+
+  // Vertical: slight smooth to avoid jitter from vy
+  const targetY = G.P.y + 3.5 + cl(-G.P.vy * .15, -4, 4);
+  cam.position.y += (targetY - cam.position.y) * (1 - Math.exp(-8 * dt));
+
+  // Always look ahead of player in their heading
+  cam.lookAt(
+    G.P.x + fx * 30,
+    G.P.y + .8 + pvy * 1.5,
+    G.P.z + fz * 30
+  );
+
+  const fov = 64 + sp * 10 + G.P.boost * 8;
+  if (Math.abs(cam.fov - fov) > .05){
+    cam.fov += (fov - cam.fov) * (1 - Math.exp(-6 * dt));
+    cam.updateProjectionMatrix();
+  }
 
   tickWeather(dt);
   recycleClouds();
