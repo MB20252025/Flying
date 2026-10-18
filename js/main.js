@@ -18,6 +18,7 @@ import { room, tickTV, rebuildTablePizza } from './room/livingroom.js';
 import { startIntro, skipIntro, introStep } from './room/intro.js';
 import { tickPigeon, tickBirds, tickFlybys, resetFlybys, resetBirds, resetPigeon } from './creatures.js';
 import { tickSpace, aurora, aurora2 } from './space.js';
+import { tickKingKong, resetKingKong } from './kingkong.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
@@ -178,6 +179,7 @@ function resetRun(){
   tp.fill(-9999);
   G.hc = [1e9, 1e9];
   resetFlybys();
+  resetKingKong();
   resetBirds();
   resetPigeon();
   resetWeather();
@@ -309,6 +311,7 @@ function play(dt){
   tickPigeon(dt);
   tickBirds(dt);
   tickFlybys(dt);
+  tickKingKong(dt);
   checkMission();
   tickTrail(dt, G.P.boost);
 
@@ -368,7 +371,6 @@ function frame(now){
   const cx = Math.floor(px/100), cz = Math.floor(pz/100);
   if (cx !== G.hc[0] || cz !== G.hc[1]){ G.hc = [cx, cz]; laySt(cx, cz); }
 
-  /* --- GROUND: keep texture locked to world coordinates --- */
   ground.position.x = px;
   ground.position.z = pz;
   gt.offset.set(px / GROUND_TILE, -pz / GROUND_TILE);
