@@ -87,8 +87,13 @@ export function tickDebris(dt){
   }
 }
 
-/* ---------- WEATHER ---------- */
-export const WX = { stormF:0, storm:false, stormT:45, flash:0, boltT:0, nextBolt:3 };
+/* ============================================================
+   WEATHER — mostly sunny, brief storms
+   First storm starts ~2 minutes in; storms last 12–20s;
+   clear periods last 100–160s. stormF fades fast so the sky
+   returns to blue quickly.
+   ============================================================ */
+export const WX = { stormF:0, storm:false, stormT:120, flash:0, boltT:0, nextBolt:3 };
 
 const NR = 240;
 const rX = new Float32Array(NR), rY = new Float32Array(NR), rZ = new Float32Array(NR);
@@ -151,10 +156,14 @@ export function tickWeather(dt){
   WX.stormT -= dt;
   if (WX.stormT <= 0){
     WX.storm = !WX.storm && G.alt < 1700;
-    WX.stormT = WX.storm ? 28 + Math.random()*10 : 55 + Math.random()*40;
+    WX.stormT = WX.storm
+      ? 12 + Math.random() * 8          // 12–20s storm
+      : 100 + Math.random() * 60;       // 100–160s sunny
   }
   if (G.alt > 1900) WX.storm = false;
-  WX.stormF += ((WX.storm ? 1 : 0) - WX.stormF) * (1 - Math.exp(-.7*dt));
+
+  /* Fade faster (1.5 vs old 0.7) so blue sky returns quickly */
+  WX.stormF += ((WX.storm ? 1 : 0) - WX.stormF) * (1 - Math.exp(-1.5 * dt));
 
   if (WX.storm && WX.stormF > .6){
     WX.nextBolt -= dt;
@@ -181,7 +190,7 @@ export function tickWeather(dt){
 
   rain.visible = WX.stormF > .03;
   if (rain.visible){
-    rain.material.opacity = WX.stormF*.5;
+    rain.material.opacity = WX.stormF * .5;
     for (let i=0;i<NR;i++){
       rY[i] -= 55*dt;
       rZ[i] += G.P.fs*dt;
@@ -202,5 +211,5 @@ export function tickWeather(dt){
 }
 
 export function resetWeather(){
-  WX.stormF = 0; WX.storm = false; WX.stormT = 45; WX.flash = 0; WX.boltT = 0; WX.nextBolt = 3;
-}
+  WX.stormF = 0; WX.storm = false; WX.stormT = 120; WX.flash = 0; WX.boltT = 0; WX.nextBolt = 3;
+        }
