@@ -26,21 +26,22 @@ for (let i=0;i<NC;i++) cls.push({ x:0, y:0, z:0, r:20, gold:false, in:false, eg:
 export let eyeG = [];
 export function attachEyes(eyes){ eyeG = eyes; }
 
-/* ---------- Distance-based eye spawner ---------- */
-let lastEyePz = 51.9;
+let lastEyeDist = 0;
 let nextEyeDistance = 2500 + Math.random() * 1000;
 
-export function resetEyeTracker(pz){
-  lastEyePz = pz;
+export function resetEyeTracker(){
+  lastEyeDist = G.totalDist;
   nextEyeDistance = 2500 + Math.random() * 1000;
 }
 
 export function spawnCloud(i, init){
   const c = cls[i];
   if (c.eg){ c.eg.visible = false; c.eg.userData.free = true; c.eg = null; }
-  c.x = G.P.x + (rnd()-.5)*520;
+  const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
+  const ahead = init ? rnd()*700 : 150 + rnd()*550;
+  c.x = G.P.x + fx * ahead + (rnd()-.5)*520;
   c.y = G.P.y + (rnd()-.5)*280;
-  c.z = G.P.z - (init ? rnd()*700 : 150 + rnd()*550);
+  c.z = G.P.z + fz * ahead + (rnd()-.5)*520;
   c.gold = rnd() < .07;
   const w = 16 + rnd()*38;
   const h = 6 + rnd()*(rnd()<.3 ? 30 : 14);
@@ -59,10 +60,8 @@ export function spawnCloud(i, init){
   }
   cg.attributes.position.needsUpdate = cg.attributes.size.needsUpdate = cg.attributes.col.needsUpdate = cg.attributes.k.needsUpdate = true;
 
-  /* --- Eye spawn: distance-gated, altitude-gated, deep inside the cloud --- */
   if (!c.gold && G.P.y > 900 && c.r >= 22){
-    const travelled = lastEyePz - G.P.z;
-    if (travelled >= nextEyeDistance){
+    if (G.totalDist - lastEyeDist >= nextEyeDistance){
       const g = eyeG.find(e => e.userData.free);
       if (g){
         g.userData.free = false;
@@ -70,7 +69,7 @@ export function spawnCloud(i, init){
         g.visible = true;
         g.scale.setScalar(c.r * .12);
         g.position.set(c.x, c.y, c.z);
-        lastEyePz = G.P.z;
+        lastEyeDist = G.totalDist;
         nextEyeDistance = 2500 + Math.random() * 1000;
       }
     }
@@ -78,8 +77,14 @@ export function spawnCloud(i, init){
 }
 
 export function recycleClouds(){
+  const fx = Math.sin(G.P.yaw), fz = -Math.cos(G.P.yaw);
   for (let i=0;i<NC;i++){
     const c = cls[i];
-    if (c.z > G.P.z + 50 || Math.abs(c.y - G.P.y) > 210 || Math.abs(c.x - G.P.x) > 330) spawnCloud(i, false);
+    const dx = c.x - G.P.x, dz = c.z - G.P.z;
+    const forward = dx * fx + dz * fz;
+    const right   = dx * fz - dz * fx;
+    if (forward < -60 || Math.abs(c.y - G.P.y) > 210 || Math.abs(right) > 340){
+      spawnCloud(i, false);
+    }
   }
 }
