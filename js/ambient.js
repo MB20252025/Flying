@@ -6,7 +6,6 @@ import { sl } from './world/items.js';
 
 function M(c, o){ return new T.MeshLambertMaterial(Object.assign({color:c, fog:false}, o||{})); }
 function MB(c, o){ return new T.MeshBasicMaterial(Object.assign({color:c, fog:false}, o||{})); }
-function SH(c){ return new T.MeshLambertMaterial({color:c}); }
 
 function fwd(){ return { fx: Math.sin(G.P.yaw), fz: -Math.cos(G.P.yaw) }; }
 
@@ -29,7 +28,7 @@ export function isPlayerTrapped(){
 }
 
 /* ============================================================
-   WATER TORNADO
+   WATER TORNADO (unchanged)
    ============================================================ */
 const wt = new T.Group(); S.add(wt);
 {
@@ -43,12 +42,8 @@ const wt = new T.Group(); S.add(wt);
     const cyl = new T.Mesh(
       new T.CylinderGeometry(s.r1, s.r2, s.h, 28, 10, true),
       new T.MeshBasicMaterial({
-        color: s.color,
-        transparent: true,
-        opacity: s.opacity,
-        side: T.DoubleSide,
-        depthWrite: false,
-        fog: false
+        color: s.color, transparent: true, opacity: s.opacity,
+        side: T.DoubleSide, depthWrite: false, fog: false
       })
     );
     cyl.position.y = s.h / 2;
@@ -58,10 +53,7 @@ const wt = new T.Group(); S.add(wt);
 
   const foam = new T.Mesh(
     new T.RingGeometry(44, 58, 32),
-    new T.MeshBasicMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.55,
-      side: T.DoubleSide, depthWrite: false, fog: false
-    })
+    new T.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.55, side: T.DoubleSide, depthWrite: false, fog: false})
   );
   foam.rotation.x = -Math.PI / 2;
   foam.position.y = 0.8;
@@ -69,10 +61,7 @@ const wt = new T.Group(); S.add(wt);
 
   const mist = new T.Mesh(
     new T.CircleGeometry(46, 16),
-    new T.MeshBasicMaterial({
-      color: 0xccddee, transparent: true, opacity: 0.4,
-      side: T.DoubleSide, depthWrite: false, fog: false
-    })
+    new T.MeshBasicMaterial({color: 0xccddee, transparent: true, opacity: 0.4, side: T.DoubleSide, depthWrite: false, fog: false})
   );
   mist.rotation.x = -Math.PI / 2;
   mist.position.y = 340;
@@ -88,9 +77,7 @@ const wt = new T.Group(); S.add(wt);
     }
     wt.add(new T.Line(
       new T.BufferGeometry().setFromPoints(pts),
-      new T.LineBasicMaterial({
-        color: 0xddeeff, transparent: true, opacity: 0.55, fog: false
-      })
+      new T.LineBasicMaterial({color: 0xddeeff, transparent: true, opacity: 0.55, fog: false})
     ));
   }
 
@@ -131,17 +118,13 @@ const wt = new T.Group(); S.add(wt);
   }));
   wt.add(sprayPts);
 
-  wt.userData = {
-    shells,
-    spPos, spT, spA, spR, spGeo, NSP,
-    sprayPos, sprayGeo, NSPRAY
-  };
+  wt.userData = { shells, spPos, spT, spA, spR, spGeo, NSP, sprayPos, sprayGeo, NSPRAY };
 }
 wt.visible = false;
 let wtA = false, wtT = 0, wtSpin = 0;
 
 /* ============================================================
-   ASTEROID
+   ASTEROID (unchanged)
    ============================================================ */
 const ast = new T.Group(); S.add(ast);
 {
@@ -151,11 +134,7 @@ const ast = new T.Group(); S.add(ast);
   for (let i = 0; i < 14; i++){
     const b = new T.Mesh(new T.SphereGeometry(20 + Math.random()*25, 8, 6), rockMat);
     const aa = Math.random()*Math.PI*2, bb = Math.random()*Math.PI - Math.PI/2;
-    b.position.set(
-      Math.cos(aa)*Math.cos(bb)*130,
-      Math.sin(bb)*130,
-      Math.sin(aa)*Math.cos(bb)*130
-    );
+    b.position.set(Math.cos(aa)*Math.cos(bb)*130, Math.sin(bb)*130, Math.sin(aa)*Math.cos(bb)*130);
     main.add(b);
   }
 
@@ -176,195 +155,343 @@ let astA = false, astT = 0;
 const astVel = new T.Vector3();
 
 /* ============================================================
-   SHARK — lathe body split at mid, oval mouth, swaying tail
+   SHARK — realistic great white, smooth tail-sway via shader
    ============================================================ */
+const SHARK_PROFILE = [
+  new T.Vector2(0.05, 0),
+  new T.Vector2(0.20, 0.5),
+  new T.Vector2(0.50, 1.5),
+  new T.Vector2(0.90, 2.8),
+  new T.Vector2(1.50, 4.2),
+  new T.Vector2(2.10, 6.0),
+  new T.Vector2(2.70, 8.0),
+  new T.Vector2(3.30, 10.5),
+  new T.Vector2(3.80, 13.0),
+  new T.Vector2(4.20, 16.0),
+  new T.Vector2(4.50, 19.0),
+  new T.Vector2(4.60, 22.0),
+  new T.Vector2(4.50, 25.0),
+  new T.Vector2(4.20, 28.0),
+  new T.Vector2(3.80, 31.0),
+  new T.Vector2(3.30, 34.0),
+  new T.Vector2(2.70, 37.0),
+  new T.Vector2(2.10, 40.0),
+  new T.Vector2(1.50, 43.0),
+  new T.Vector2(1.00, 46.0),
+  new T.Vector2(0.60, 49.0),
+  new T.Vector2(0.30, 52.0),
+  new T.Vector2(0.10, 54.0)
+];
+const SHARK_LEN = 54;
+const SHARK_HALF = 27;
+const Y_SCALE = 0.72;
+
+function radiusAtProfile(z){
+  const zNorm = (z + SHARK_HALF) / SHARK_LEN;
+  const idx = zNorm * (SHARK_PROFILE.length - 1);
+  const lo = Math.max(0, Math.floor(idx));
+  const hi = Math.min(SHARK_PROFILE.length - 1, Math.ceil(idx));
+  const f = idx - lo;
+  return SHARK_PROFILE[lo].x * (1 - f) + SHARK_PROFILE[hi].x * f;
+}
+
+function makeSharkMaterial(){
+  const mat = new T.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.68,
+    metalness: 0.04,
+    flatShading: false
+  });
+
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = { value: 0 };
+    shader.uniforms.uBendAmp = { value: 2.2 };
+
+    shader.vertexShader = `
+      uniform float uTime;
+      uniform float uBendAmp;
+      ${shader.vertexShader}
+    `;
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `
+      vec3 transformed = vec3(position);
+      float tailT = max(0.0, position.z + 5.0) / 32.0;
+      tailT = min(1.0, tailT);
+      tailT = tailT * tailT;
+      float wave = sin(uTime * 4.0 - position.z * 0.18);
+      transformed.x += wave * uBendAmp * tailT;
+      `
+    );
+
+    mat.userData.shader = shader;
+  };
+  return mat;
+}
+
+function bakeBodyColors(geo){
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++){
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const r = radiusAtProfile(z) * Y_SCALE;
+    let t = r > 0.001 ? y / r : 0;
+    t = Math.max(-1, Math.min(1, t));
+
+    let R, G_, B;
+    if (t < -0.25){
+      const u = Math.min(1, (t + 1) / 0.75);
+      R = 0.94 - (0.94 - 0.86) * u;
+      G_ = 0.92 - (0.92 - 0.87) * u;
+      B = 0.84 - (0.84 - 0.82) * u;
+    } else if (t < 0.25){
+      const u = (t + 0.25) / 0.5;
+      R = 0.86 - (0.86 - 0.55) * u;
+      G_ = 0.87 - (0.87 - 0.60) * u;
+      B = 0.82 - (0.82 - 0.63) * u;
+    } else {
+      const u = (t - 0.25) / 0.75;
+      R = 0.55 - (0.55 - 0.28) * u;
+      G_ = 0.60 - (0.60 - 0.33) * u;
+      B = 0.63 - (0.63 - 0.36) * u;
+    }
+
+    colors[i*3] = R;
+    colors[i*3+1] = G_;
+    colors[i*3+2] = B;
+  }
+  geo.setAttribute('color', new T.BufferAttribute(colors, 3));
+}
+
+function bakeFinColors(geo, isDark){
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++){
+    if (isDark){
+      colors[i*3] = 0.32;
+      colors[i*3+1] = 0.37;
+      colors[i*3+2] = 0.41;
+    } else {
+      colors[i*3] = 0.78;
+      colors[i*3+1] = 0.75;
+      colors[i*3+2] = 0.71;
+    }
+  }
+  geo.setAttribute('color', new T.BufferAttribute(colors, 3));
+}
+
 function buildShark(){
   const g = new T.Group();
+  const mat = makeSharkMaterial();
 
-  const bodyMat  = SH(0x445566);
-  const bellyMat = SH(0x99aabb);
-  const teethMat = SH(0xf0f0f0);
-  const eyeMat   = SH(0x111111);
-  const mouthMat = SH(0x220000);
-  const browMat  = SH(0x2a3344);
+  /* --- Body --- */
+  const bodyGeo = new T.LatheGeometry(SHARK_PROFILE, 44);
+  bodyGeo.rotateX(Math.PI / 2);
+  bodyGeo.translate(0, 0, -SHARK_HALF);
+  bodyGeo.scale(1, Y_SCALE, 1);
+  bakeBodyColors(bodyGeo);
 
-  /* ---- Front body: nose to just past mid (Z: -27.5 → +2.5) ---- */
-  const frontProfile = [
-    new T.Vector2(0.2, 0),
-    new T.Vector2(1.5, 3),
-    new T.Vector2(3,   7),
-    new T.Vector2(4.5, 13),
-    new T.Vector2(5.5, 20),
-    new T.Vector2(6,   27.5),
-    new T.Vector2(5.9, 30)
-  ];
-  const frontGeo = new T.LatheGeometry(frontProfile, 22);
-  frontGeo.rotateX(Math.PI / 2);
-  frontGeo.translate(0, 0, -27.5);
-  const frontBody = new T.Mesh(frontGeo, bodyMat);
-  frontBody.scale.set(1, 0.72, 1);
-  g.add(frontBody);
+  const body = new T.Mesh(bodyGeo, mat);
+  body.frustumCulled = false;
+  g.add(body);
 
-  /* Front belly patch */
-  const frontBelly = new T.Mesh(new T.SphereGeometry(1, 16, 10), bellyMat);
-  frontBelly.scale.set(4.1, 1.5, 14);
-  frontBelly.position.set(0, -2.6, -14);
-  g.add(frontBelly);
+  /* Helper: build a fin from a 2D shape, extrude, and bake at a fixed world position */
+  function addFin(shapePts, extrudeOpts, worldPos, rotY, isDark, mirrorX){
+    const shape = new T.Shape();
+    shape.moveTo(shapePts[0][0], shapePts[0][1]);
+    for (let i = 1; i < shapePts.length; i++) shape.lineTo(shapePts[i][0], shapePts[i][1]);
+    shape.closePath();
 
-  /* ---- Tail group: pivot at Z=0, so tail sways from mid body ---- */
-  const tailGroup = new T.Group();
-  g.add(tailGroup);
+    const geo = new T.ExtrudeGeometry(shape, extrudeOpts);
+    geo.translate(0, 0, -(extrudeOpts.depth || 0.3) / 2);
+    if (mirrorX) geo.scale(-1, 1, 1);
+    geo.rotateY(rotY || Math.PI / 2);
+    geo.translate(worldPos.x, worldPos.y, worldPos.z);
+    bakeFinColors(geo, isDark);
 
-  const tailProfile = [
-    new T.Vector2(5.9, 0),
-    new T.Vector2(6,   2.5),
-    new T.Vector2(5.8, 7),
-    new T.Vector2(5,   13),
-    new T.Vector2(3.5, 19),
-    new T.Vector2(2,   24),
-    new T.Vector2(0.3, 30)
-  ];
-  const tailGeo = new T.LatheGeometry(tailProfile, 22);
-  tailGeo.rotateX(Math.PI / 2);
-  tailGeo.translate(0, 0, -2.5);
-  const tailBody = new T.Mesh(tailGeo, bodyMat);
-  tailBody.scale.set(1, 0.72, 1);
-  tailGroup.add(tailBody);
-
-  /* Tail belly */
-  const tailBelly = new T.Mesh(new T.SphereGeometry(1, 16, 10), bellyMat);
-  tailBelly.scale.set(4.1, 1.5, 14);
-  tailBelly.position.set(0, -2.6, 14);
-  tailGroup.add(tailBelly);
-
-  /* ---- Oval mouth cavity ---- */
-  const mouthCavity = new T.Mesh(
-    new T.SphereGeometry(1, 18, 12),
-    mouthMat
-  );
-  mouthCavity.scale.set(3.4, 1.3, 2.6);
-  mouthCavity.position.set(0, 0.6, -23.5);
-  g.add(mouthCavity);
-
-  /* ---- Jaw pivot — curved lower jaw (no boxes) ---- */
-  const jawPivot = new T.Group();
-  jawPivot.position.set(0, -2.2, -22);
-  g.add(jawPivot);
-
-  const lowerJaw = new T.Mesh(
-    new T.SphereGeometry(1, 20, 12),
-    bodyMat
-  );
-  lowerJaw.scale.set(3.5, 0.9, 4.2);
-  lowerJaw.position.set(0, -0.3, -3.5);
-  jawPivot.add(lowerJaw);
-
-  /* Upper teeth arc — curved forward slightly at centre */
-  for (let i = 0; i < 11; i++){
-    const t = i / 10;
-    const angle = -Math.PI * 0.5 + t * Math.PI;
-    const tx = Math.sin(angle) * 3.0;
-    const tz = -23 + Math.cos(angle) * -2;
-    const tooth = new T.Mesh(new T.ConeGeometry(0.24, 0.85, 4), teethMat);
-    tooth.position.set(tx, 0.35, tz);
-    tooth.rotation.x = Math.PI;
-    g.add(tooth);
+    const m = new T.Mesh(geo, mat);
+    m.frustumCulled = false;
+    g.add(m);
+    return m;
   }
 
-  /* Lower teeth arc — on jaw so they move when it opens */
-  for (let i = 0; i < 11; i++){
-    const t = i / 10;
-    const angle = -Math.PI * 0.5 + t * Math.PI;
-    const tx = Math.sin(angle) * 3.0;
-    const tz = -3 + Math.cos(angle) * -2;
-    const tooth = new T.Mesh(new T.ConeGeometry(0.24, 0.8, 4), teethMat);
-    tooth.position.set(tx, 0.35, tz);
+  /* --- Dorsal fin (large triangular, on top, near mid) --- */
+  addFin(
+    [[0,0],[2,3],[4,6.5],[6,7.8],[8,7],[9,4],[9.5,1],[9.5,0]],
+    {depth: 0.4, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.2, bevelSegments: 2},
+    {x: -4.75, y: 3.2, z: -2},
+    Math.PI / 2,
+    true, false
+  );
+
+  /* --- Pectoral fins (2, angled down/out, near head) --- */
+  for (const sx of [-1, 1]){
+    addFin(
+      [[0,0],[7,-1.5],[9,-3],[8,-4.5],[4,-3],[1,-1.5]],
+      {depth: 0.3, bevelEnabled: true, bevelThickness: 0.15, bevelSize: 0.15, bevelSegments: 2},
+      {x: sx * 3.5, y: -1.2, z: -8},
+      Math.PI / 2,
+      false, sx < 0
+    );
+  }
+
+  /* --- Pelvic fins (2, small, under belly near mid) --- */
+  for (const sx of [-1, 1]){
+    addFin(
+      [[0,0],[3,-0.5],[4.5,-2],[3.5,-3],[1,-2]],
+      {depth: 0.2, bevelEnabled: false},
+      {x: sx * 2.3, y: -2.8, z: 4},
+      Math.PI / 2,
+      true, sx < 0
+    );
+  }
+
+  /* --- Second dorsal fin (tiny, top, near tail) --- */
+  addFin(
+    [[0,0],[1,1.5],[2,2],[2.5,1],[2,0]],
+    {depth: 0.2, bevelEnabled: false},
+    {x: -1.25, y: 2, z: 18},
+    Math.PI / 2,
+    true, false
+  );
+
+  /* --- Anal fin (bottom, near tail) --- */
+  addFin(
+    [[0,0],[2,-0.5],[2.5,-2],[1.5,-2.5],[0.5,-1.5]],
+    {depth: 0.2, bevelEnabled: false},
+    {x: -1.25, y: -2.3, z: 14},
+    Math.PI / 2,
+    false, false
+  );
+
+  /* --- Tail fin: crescent, upper lobe longer than lower --- */
+  // Upper lobe
+  addFin(
+    [[0,0],[2,3],[5,7],[9,10],[11,9],[10,6],[7,3],[4,1]],
+    {depth: 0.4, bevelEnabled: true, bevelThickness: 0.15, bevelSize: 0.15, bevelSegments: 2},
+    {x: 0, y: 0, z: SHARK_HALF},
+    -Math.PI / 2,
+    true, false
+  );
+  // Lower lobe (shorter)
+  addFin(
+    [[0,0],[3,-2],[6,-5],[7,-5.5],[6,-3],[3,-1]],
+    {depth: 0.4, bevelEnabled: true, bevelThickness: 0.15, bevelSize: 0.15, bevelSegments: 2},
+    {x: 0, y: -0.5, z: SHARK_HALF},
+    -Math.PI / 2,
+    true, false
+  );
+
+  /* --- Gills (5 slits per side) --- */
+  for (const sx of [-1, 1]){
+    for (let i = 0; i < 5; i++){
+      const gz = -15 + i * 1.4;
+      const bodyR = radiusAtProfile(gz);
+      const gill = new T.Mesh(
+        new T.BoxGeometry(0.12, 1.1, 0.25),
+        new T.MeshStandardMaterial({color: 0x0a0a0a, roughness: 0.95})
+      );
+      gill.position.set(sx * bodyR * 0.92, 0.3, gz);
+      gill.rotation.y = sx * 0.12;
+      g.add(gill);
+    }
+  }
+
+  /* --- Eyes (small, glossy black, side-mounted) --- */
+  for (const sx of [-1, 1]){
+    const socket = new T.Mesh(new T.SphereGeometry(0.85, 14, 12), mat);
+    socket.position.set(sx * 1.55, 1.4, -21);
+    g.add(socket);
+
+    const eye = new T.Mesh(
+      new T.SphereGeometry(0.62, 18, 16),
+      new T.MeshStandardMaterial({color: 0x000000, roughness: 0.12, metalness: 0.7})
+    );
+    eye.position.set(sx * 1.85, 1.4, -21.4);
+    g.add(eye);
+
+    const glint = new T.Mesh(
+      new T.SphereGeometry(0.18, 8, 8),
+      new T.MeshBasicMaterial({color: 0xffffff})
+    );
+    glint.position.set(sx * 1.95, 1.6, -21.9);
+    g.add(glint);
+  }
+
+  /* --- Nostrils (small dimples near snout) --- */
+  for (const sx of [-1, 1]){
+    const n = new T.Mesh(
+      new T.SphereGeometry(0.22, 8, 6),
+      new T.MeshStandardMaterial({color: 0x111111, roughness: 0.95})
+    );
+    n.position.set(sx * 0.65, 0.15, -24.5);
+    g.add(n);
+  }
+
+  /* --- Mouth (under-snout, dark cavity, two tooth rows) --- */
+  const mouthGroup = new T.Group();
+  mouthGroup.position.set(0, -1.4, -21);
+  g.add(mouthGroup);
+
+  // Dark mouth interior
+  const cavity = new T.Mesh(
+    new T.SphereGeometry(1.8, 18, 14),
+    new T.MeshStandardMaterial({color: 0x160404, roughness: 0.95})
+  );
+  cavity.scale.set(1.4, 0.45, 1.1);
+  cavity.position.set(0, -0.2, -2.8);
+  mouthGroup.add(cavity);
+
+  // Upper jaw teeth — arc under snout
+  for (let i = 0; i < 14; i++){
+    const t = i / 13;
+    const angle = (t - 0.5) * Math.PI * 0.9;
+    const tooth = new T.Mesh(
+      new T.ConeGeometry(0.16, 0.55, 5),
+      new T.MeshStandardMaterial({color: 0xf2ecdc, roughness: 0.5})
+    );
+    tooth.position.set(
+      Math.sin(angle) * 1.55,
+      -0.55,
+      Math.cos(angle) * -0.7 - 2.6
+    );
+    tooth.rotation.x = Math.PI;
+    mouthGroup.add(tooth);
+  }
+
+  // Lower jaw — pivoting group with curved jaw mesh + teeth
+  const jawPivot = new T.Group();
+  jawPivot.position.set(0, -0.4, -1.4);
+  mouthGroup.add(jawPivot);
+
+  const lowerJaw = new T.Mesh(new T.SphereGeometry(1.5, 18, 12), mat);
+  lowerJaw.scale.set(1.3, 0.4, 1.4);
+  lowerJaw.position.set(0, -0.35, -1.3);
+  jawPivot.add(lowerJaw);
+
+  for (let i = 0; i < 14; i++){
+    const t = i / 13;
+    const angle = (t - 0.5) * Math.PI * 0.9;
+    const tooth = new T.Mesh(
+      new T.ConeGeometry(0.15, 0.5, 5),
+      new T.MeshStandardMaterial({color: 0xf2ecdc, roughness: 0.5})
+    );
+    tooth.position.set(
+      Math.sin(angle) * 1.4,
+      0.15,
+      Math.cos(angle) * -0.7 - 1.2
+    );
     jawPivot.add(tooth);
   }
 
-  /* ---- Big eyes with brow ---- */
-  for (const sx of [-1, 1]){
-    const socket = new T.Mesh(new T.SphereGeometry(1.7, 12, 10), bodyMat);
-    socket.position.set(sx * 3.2, 2.2, -19);
-    g.add(socket);
+  g.scale.setScalar(1.3);
+  g.userData = { material: mat, jawPivot, mouthGroup };
 
-    const eye = new T.Mesh(new T.SphereGeometry(1.35, 16, 14), eyeMat);
-    eye.position.set(sx * 3.6, 2.2, -19.7);
-    g.add(eye);
+  /* Prevent frustum culling issues on shader-displaced vertices */
+  g.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
 
-    const glint = new T.Mesh(new T.SphereGeometry(0.4, 8, 8), SH(0xffffff));
-    glint.position.set(sx * 3.9, 2.6, -20.5);
-    g.add(glint);
-
-    /* Brow ridge above eye */
-    const brow = new T.Mesh(new T.BoxGeometry(2.4, 0.4, 1.6), browMat);
-    brow.position.set(sx * 3.6, 3.4, -19);
-    brow.rotation.z = sx * -0.15;
-    g.add(brow);
-  }
-
-  /* ---- Dorsal fin (points up) ---- */
-  {
-    const shape = new T.Shape();
-    shape.moveTo(0, 0);
-    shape.lineTo(6, 0);
-    shape.lineTo(3, 8);
-    shape.closePath();
-    const geo = new T.ExtrudeGeometry(shape, {depth: 0.5, bevelEnabled: false});
-    geo.translate(-3, 0, -0.25);
-    geo.rotateY(Math.PI / 2);
-    const dorsal = new T.Mesh(geo, bodyMat);
-    dorsal.position.set(0, 4.5, -2);
-    g.add(dorsal);
-  }
-
-  /* ---- Tail fin — attached to tailGroup, at the very back ---- */
-  {
-    /* Upper lobe — big, points up and back */
-    const shape = new T.Shape();
-    shape.moveTo(0, 0);
-    shape.lineTo(8, 10);
-    shape.lineTo(3, 0);
-    shape.closePath();
-    const geo = new T.ExtrudeGeometry(shape, {depth: 0.5, bevelEnabled: false});
-    geo.translate(0, 0, -0.25);
-    geo.rotateY(-Math.PI / 2);
-    const upper = new T.Mesh(geo, bodyMat);
-    upper.position.set(0, 0, 29);
-    tailGroup.add(upper);
-
-    /* Lower lobe — smaller, points down and back */
-    const shape2 = new T.Shape();
-    shape2.moveTo(0, 0);
-    shape2.lineTo(6, -7);
-    shape2.lineTo(2, 0);
-    shape2.closePath();
-    const geo2 = new T.ExtrudeGeometry(shape2, {depth: 0.5, bevelEnabled: false});
-    geo2.translate(0, 0, -0.25);
-    geo2.rotateY(-Math.PI / 2);
-    const lower = new T.Mesh(geo2, bodyMat);
-    lower.position.set(0, -1.5, 29);
-    tailGroup.add(lower);
-  }
-
-  /* ---- Pectoral fins ---- */
-  for (const sx of [-1, 1]){
-    const shape = new T.Shape();
-    shape.moveTo(0, 0);
-    shape.lineTo(6, -2);
-    shape.lineTo(2, 4);
-    shape.closePath();
-    const geo = new T.ExtrudeGeometry(shape, {depth: 0.4, bevelEnabled: false});
-    geo.translate(0, 0, -0.2);
-    const pec = new T.Mesh(geo, bodyMat);
-    pec.position.set(sx * 4.5, -1, -10);
-    if (sx < 0) pec.rotation.y = Math.PI;
-    pec.rotation.z = sx * 0.25;
-    g.add(pec);
-  }
-
-  g.scale.setScalar(1.35);
-  g.userData = { jawPivot, tailGroup };
   return g;
 }
 
@@ -377,14 +504,13 @@ for (let i = 0; i < 3; i++){
 }
 
 /* ============================================================
-   DRAGON — bigger, spikes down spine, hinged wings
+   DRAGON — spikes, bigger, hinged wings
    ============================================================ */
 function buildDragon(){
   const g = new T.Group();
   const red  = M(0x882222);
   const redD = M(0x551111);
 
-  /* Serpentine body */
   const pieces = [];
   for (let i = 0; i < 10; i++){
     const s = new T.Mesh(new T.SphereGeometry(4 - i*0.35, 10, 8), red);
@@ -393,7 +519,6 @@ function buildDragon(){
     pieces.push(s);
   }
 
-  /* Row of shrinking spikes down spine / tail */
   for (let i = 2; i < 10; i++){
     const r = 4 - i * 0.35;
     const spikeH = 1.8 + r * 0.5;
@@ -403,17 +528,14 @@ function buildDragon(){
     g.add(spike);
   }
 
-  /* Head — square jaw */
   const head = new T.Mesh(new T.BoxGeometry(5, 4, 8), red);
   head.position.z = -6;
   g.add(head);
 
-  /* Upper snout */
   const upperJaw = new T.Mesh(new T.BoxGeometry(4.4, 1.6, 5.5), red);
   upperJaw.position.set(0, -0.4, -11);
   g.add(upperJaw);
 
-  /* Lower jaw (animates) */
   const jawPivot = new T.Group();
   jawPivot.position.set(0, -1.5, -9);
   g.add(jawPivot);
@@ -429,7 +551,6 @@ function buildDragon(){
     g.add(tooth);
   }
 
-  /* Eyes */
   for (const sx of [-1, 1]){
     const socket = new T.Mesh(new T.SphereGeometry(1.1, 10, 8), redD);
     socket.position.set(sx * 2.3, 0.8, -7.5);
@@ -444,14 +565,12 @@ function buildDragon(){
     g.add(pup);
   }
 
-  /* Nostrils */
   for (const sx of [-1, 1]){
     const n = new T.Mesh(new T.SphereGeometry(0.3, 6, 6), MB(0x110000));
     n.position.set(sx * 1, 0, -13.8);
     g.add(n);
   }
 
-  /* Horns */
   for (const sx of [-1, 1]){
     const horn = new T.Mesh(new T.ConeGeometry(0.7, 4, 5), redD);
     horn.position.set(sx * 1.8, 2.8, -6);
@@ -459,52 +578,51 @@ function buildDragon(){
     g.add(horn);
   }
 
-  /* ---- Wings: inner + outer hinged, both horizontal ---- */
+  /* Wings — inner + outer hinged */
   const wl = new T.Group(); wl.position.set(-2.5, 1, 0);
   {
-    const wlInner = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
-    wlInner.rotation.x = -Math.PI / 2;
-    wlInner.position.x = -4;
-    wlInner.material.side = T.DoubleSide;
-    wl.add(wlInner);
+    const inner = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
+    inner.rotation.x = -Math.PI / 2;
+    inner.position.x = -4;
+    inner.material.side = T.DoubleSide;
+    wl.add(inner);
 
-    const wlOuterPivot = new T.Group();
-    wlOuterPivot.position.x = -8;
-    wl.add(wlOuterPivot);
+    const outerPivot = new T.Group();
+    outerPivot.position.x = -8;
+    wl.add(outerPivot);
 
-    const wlOuter = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
-    wlOuter.rotation.x = -Math.PI / 2;
-    wlOuter.position.x = -4;
-    wlOuter.material.side = T.DoubleSide;
-    wlOuterPivot.add(wlOuter);
+    const outer = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
+    outer.rotation.x = -Math.PI / 2;
+    outer.position.x = -4;
+    outer.material.side = T.DoubleSide;
+    outerPivot.add(outer);
 
-    wl.userData.outerPivot = wlOuterPivot;
+    wl.userData.outerPivot = outerPivot;
   }
   g.add(wl);
 
   const wr = new T.Group(); wr.position.set(2.5, 1, 0);
   {
-    const wrInner = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
-    wrInner.rotation.x = -Math.PI / 2;
-    wrInner.position.x = 4;
-    wrInner.material.side = T.DoubleSide;
-    wr.add(wrInner);
+    const inner = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
+    inner.rotation.x = -Math.PI / 2;
+    inner.position.x = 4;
+    inner.material.side = T.DoubleSide;
+    wr.add(inner);
 
-    const wrOuterPivot = new T.Group();
-    wrOuterPivot.position.x = 8;
-    wr.add(wrOuterPivot);
+    const outerPivot = new T.Group();
+    outerPivot.position.x = 8;
+    wr.add(outerPivot);
 
-    const wrOuter = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
-    wrOuter.rotation.x = -Math.PI / 2;
-    wrOuter.position.x = 4;
-    wrOuter.material.side = T.DoubleSide;
-    wrOuterPivot.add(wrOuter);
+    const outer = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
+    outer.rotation.x = -Math.PI / 2;
+    outer.position.x = 4;
+    outer.material.side = T.DoubleSide;
+    outerPivot.add(outer);
 
-    wr.userData.outerPivot = wrOuterPivot;
+    wr.userData.outerPivot = outerPivot;
   }
   g.add(wr);
 
-  /* Fire particle pool */
   const NDRF = 80;
   const drfPos = new Float32Array(NDRF * 3);
   for (let i = 0; i < NDRF; i++) drfPos[i*3+1] = -99999;
@@ -516,7 +634,6 @@ function buildDragon(){
   }));
   g.add(drfPts);
 
-  /* Bigger overall — 1.3× */
   g.scale.setScalar(1.3);
 
   g.userData = {
@@ -545,7 +662,7 @@ for (let i = 0; i < 3; i++){
 }
 
 /* ============================================================
-   OCTOPUS
+   OCTOPUS (unchanged)
    ============================================================ */
 const oct = new T.Group(); S.add(oct);
 {
@@ -577,15 +694,12 @@ const oct = new T.Group(); S.add(oct);
     const socket = new T.Mesh(new T.SphereGeometry(13, 14, 12), purD);
     socket.position.set(sx * 18, 288, 32);
     oct.add(socket);
-
     const eye = new T.Mesh(new T.SphereGeometry(10, 16, 14), yellow);
     eye.position.set(sx * 18, 288, 38);
     oct.add(eye);
-
     const pup = new T.Mesh(new T.BoxGeometry(2.5, 12, 4), black);
     pup.position.set(sx * 18, 288, 45);
     oct.add(pup);
-
     const brow = new T.Mesh(new T.BoxGeometry(22, 4.5, 5), purD);
     brow.position.set(sx * 18, 302, 40);
     brow.rotation.z = sx * 0.4;
@@ -696,16 +810,10 @@ export function getShootableTargets(){
 export function killTarget(t){
   if (t.type === 'shark'){
     const s = sharkPool.find(x => x.obj === t.obj);
-    if (s){
-      s.active = false;
-      spawnExplosion(t.obj.position, 0x66aaff);
-    }
+    if (s){ s.active = false; spawnExplosion(t.obj.position, 0x66aaff); }
   } else if (t.type === 'dragon'){
     const d = dragonPool.find(x => x.obj === t.obj);
-    if (d){
-      d.active = false;
-      spawnExplosion(t.obj.position, 0xff5522);
-    }
+    if (d){ d.active = false; spawnExplosion(t.obj.position, 0xff5522); }
   }
   t.obj.visible = false;
   G.Q.bonus += 100;
@@ -739,6 +847,9 @@ function spawnShark(){
     G.P.y + (rnd() - .3) * 60,
     G.P.z + fz * d - fx * side * 80
   );
+  const dxP = G.P.x - slot.obj.position.x;
+  const dzP = G.P.z - slot.obj.position.z;
+  slot.obj.rotation.set(0, Math.atan2(dxP, dzP) + Math.PI, 0);
   slot.obj.visible = true;
   slot.active = true;
   slot.phase = 0;
@@ -889,13 +1000,18 @@ function tickSharks(dt){
     s.life -= dt;
     s.phase += dt;
 
-    /* Jaw chomp */
-    s.obj.userData.jawPivot.rotation.x = -Math.abs(Math.sin(s.phase * 4)) * 0.55;
+    /* Update shader uniform → tail sway */
+    const shader = s.obj.userData.material.userData.shader;
+    if (shader) shader.uniforms.uTime.value = s.phase;
 
-    /* Tail sway side-to-side */
-    s.obj.userData.tailGroup.rotation.y = Math.sin(s.phase * 3.5) * 0.35;
+    /* Subtle jaw chomp */
+    s.obj.userData.jawPivot.rotation.x = -Math.abs(Math.sin(s.phase * 1.5)) * 0.22 - 0.03;
 
+    /* Target management */
     if (!s.target || !s.target.visible) s.target = findNearestSlice(s.obj.position);
+
+    let targetYaw = s.obj.rotation.y;
+    let desiredSpeed = 0;
 
     if (s.target){
       const dx = s.target.position.x - s.obj.position.x;
@@ -903,21 +1019,41 @@ function tickSharks(dt){
       const dz = s.target.position.z - s.obj.position.z;
       const d = Math.hypot(dx, dy, dz) || 1;
 
-      s.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
-      s.obj.rotation.z = Math.sin(s.phase * 3) * 0.12;
+      targetYaw = Math.atan2(dx, dz) + Math.PI;
+      desiredSpeed = Math.min(95, d * 1.5);
 
       if (d < 16){
         s.target.visible = false;
         s.target = null;
       } else {
-        const sp = 95;
-        s.obj.position.x += (dx/d) * sp * dt;
-        s.obj.position.y += (dy/d) * sp * dt;
-        s.obj.position.z += (dz/d) * sp * dt;
+        s.obj.position.x += (dx/d) * desiredSpeed * dt;
+        s.obj.position.y += (dy/d) * desiredSpeed * dt;
+        s.obj.position.z += (dz/d) * desiredSpeed * dt;
       }
     } else {
-      s.obj.position.z -= 15 * dt;
+      /* Drift in local facing direction */
+      const fwdX = Math.sin(s.obj.rotation.y);
+      const fwdZ = Math.cos(s.obj.rotation.y);
+      s.obj.position.x += fwdX * 15 * dt;
+      s.obj.position.z += fwdZ * 15 * dt;
     }
+
+    /* Smooth yaw rotation — no snapping */
+    let yawDiff = targetYaw - s.obj.rotation.y;
+    while (yawDiff > Math.PI)  yawDiff -= Math.PI * 2;
+    while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+
+    const rotSpeed = 2.5;
+    const maxRot = rotSpeed * dt;
+    if (Math.abs(yawDiff) < maxRot){
+      s.obj.rotation.y = targetYaw;
+    } else {
+      s.obj.rotation.y += Math.sign(yawDiff) * maxRot;
+    }
+
+    /* Banking on turns */
+    const targetRoll = -Math.sign(yawDiff) * Math.min(Math.abs(yawDiff), 0.35);
+    s.obj.rotation.z += (targetRoll - s.obj.rotation.z) * Math.min(1, dt * 3);
 
     if (s.life <= 0){ s.active = false; s.obj.visible = false; }
   }
@@ -931,25 +1067,21 @@ function tickDragons(dt){
 
     const u = d.obj.userData;
 
-    /* Wing flap — inner rotates, outer trails with phase lag */
     const flap        = Math.sin(d.phase * 5) * 0.5;
-    const flapDelayed = Math.sin(d.phase * 5 - 0.6) * 0.35;
+    const flapDelayed = Math.sin(d.phase * 5 - 0.7) * 0.4;
 
     u.wl.rotation.z = flap;
     u.wlOuterPivot.rotation.z = flapDelayed;
     u.wr.rotation.z = -flap;
     u.wrOuterPivot.rotation.z = -flapDelayed;
 
-    /* Body undulates */
     u.pieces.forEach((s, i) => {
       s.position.y = Math.sin(d.phase * 2.5 + i * 0.4) * 2;
       s.position.x = Math.sin(d.phase * 1.8 + i * 0.4) * 2;
     });
 
-    /* Jaw chomp */
     u.jawPivot.rotation.x = -Math.abs(Math.sin(d.phase * 1.5)) * 0.3;
 
-    /* Fly toward player */
     const dx = G.P.x - d.obj.position.x;
     const dz = G.P.z - d.obj.position.z;
     const dl = Math.hypot(dx, dz) || 1;
@@ -958,7 +1090,6 @@ function tickDragons(dt){
     d.obj.position.y += Math.sin(d.phase * 1.5) * 3 * dt;
     d.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
 
-    /* Fire breathing — periodic bursts */
     if (d.fireBurstTime > 0){
       d.fireBurstTime -= dt;
       for (let i = 0; i < u.NDRF; i++){
@@ -1125,4 +1256,4 @@ export function tickAmbient(dt){
   tickDragons(dt);
   tickOctopus(dt);
   tickExplosions(dt);
-                    }
+}
