@@ -26,6 +26,15 @@ for (let i=0;i<NC;i++) cls.push({ x:0, y:0, z:0, r:20, gold:false, in:false, eg:
 export let eyeG = [];
 export function attachEyes(eyes){ eyeG = eyes; }
 
+/* ---------- Distance-based eye spawner ---------- */
+let lastEyePz = 51.9;
+let nextEyeDistance = 2500 + Math.random() * 1000;
+
+export function resetEyeTracker(pz){
+  lastEyePz = pz;
+  nextEyeDistance = 2500 + Math.random() * 1000;
+}
+
 export function spawnCloud(i, init){
   const c = cls[i];
   if (c.eg){ c.eg.visible = false; c.eg.userData.free = true; c.eg = null; }
@@ -49,14 +58,21 @@ export function spawnCloud(i, init){
     ccol[n*3+2] = c.gold ? .45 : v;
   }
   cg.attributes.position.needsUpdate = cg.attributes.size.needsUpdate = cg.attributes.col.needsUpdate = cg.attributes.k.needsUpdate = true;
-  if (!c.gold && rnd() < .30){
-    const g = eyeG.find(e => e.userData.free);
-    if (g){
-      g.userData.free = false;
-      c.eg = g;
-      g.visible = true;
-      g.scale.setScalar(Math.max(2.4, c.r*.17));
-      g.position.set(c.x, c.y+2, c.z + c.r*.5);
+
+  /* --- Eye spawn: distance-gated, altitude-gated, deep inside the cloud --- */
+  if (!c.gold && G.P.y > 900 && c.r >= 22){
+    const travelled = lastEyePz - G.P.z;
+    if (travelled >= nextEyeDistance){
+      const g = eyeG.find(e => e.userData.free);
+      if (g){
+        g.userData.free = false;
+        c.eg = g;
+        g.visible = true;
+        g.scale.setScalar(c.r * .12);
+        g.position.set(c.x, c.y, c.z);
+        lastEyePz = G.P.z;
+        nextEyeDistance = 2500 + Math.random() * 1000;
+      }
     }
   }
 }
