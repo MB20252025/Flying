@@ -7,7 +7,7 @@ import { sfx, tickAudio, setGain } from './audio.js';
 import { say, tickHud, checkMission } from './ui.js';
 
 import { sky, palette } from './sky.js';
-import { gm, ground } from './world/ground.js';
+import { gm, ground, gt, GROUND_TILE } from './world/ground.js';
 import { town, laySt } from './world/town.js';
 import { traf, updCars, pedG, updPeds } from './world/traffic.js';
 import { cm, cls, NC, spawnCloud, recycleClouds, attachEyes, resetEyeTracker } from './world/clouds.js';
@@ -17,7 +17,7 @@ import { tp, tickTrail } from './player/trail.js';
 import { room, tickTV, rebuildTablePizza } from './room/livingroom.js';
 import { startIntro, skipIntro, introStep } from './room/intro.js';
 import { tickPigeon, tickBirds, tickFlybys, resetFlybys, resetBirds, resetPigeon } from './creatures.js';
-import { tickSpace } from './space.js';
+import { tickSpace, aurora, aurora2 } from './space.js';
 import { tickDebris, tickWeather, resetWeather, setCrashed } from './effects.js';
 import { setPizzaModel } from './pizza.js';
 
@@ -28,19 +28,16 @@ function makeEye(){
     const eyeGroup = new T.Group();
     eyeGroup.position.x = sg * 1.6;
 
-    // Eye white - smooth sphere
     const white = new T.Mesh(
       new T.SphereGeometry(1, 20, 16),
       new T.MeshBasicMaterial({color:0xf0ede4})
     );
     eyeGroup.add(white);
 
-    // Look group - rotates to face the camera
     const lookAt = new T.Group();
     lookAt.name = 'lookAt';
     eyeGroup.add(lookAt);
 
-    // Iris - flattened sphere sitting on the eye surface
     const iris = new T.Mesh(
       new T.SphereGeometry(0.5, 20, 12),
       new T.MeshBasicMaterial({color:0x5a3a1a})
@@ -49,7 +46,6 @@ function makeEye(){
     iris.position.z = 0.82;
     lookAt.add(iris);
 
-    // Pupil - smaller flattened sphere on the iris
     const pupil = new T.Mesh(
       new T.SphereGeometry(0.25, 16, 10),
       new T.MeshBasicMaterial({color:0x050505})
@@ -58,7 +54,6 @@ function makeEye(){
     pupil.position.z = 0.94;
     lookAt.add(pupil);
 
-    // Glint - small white highlight near the top-left of the pupil
     const glint = new T.Mesh(
       new T.CircleGeometry(0.08, 10),
       new T.MeshBasicMaterial({color:0xffffff, side:T.DoubleSide})
@@ -146,7 +141,6 @@ function startPlay(){
   G.P.z = 51.9;
   G.SZ = G.P.z;
   G.P.fs = 8;
-  // NOTE: do NOT reset G.P.y — Dave keeps his launch altitude
   room.visible = false;
   $('sk').classList.add('h');
   ['sc','di','ms','bb','bo','pb'].forEach(id => $(id).classList.remove('h'));
@@ -198,8 +192,6 @@ $('rs').onclick  = togglePause;
 $('rst').onclick = restart;
 updateSettingsLabels();
 
-/* ---------- aurora helper ---------- */
-import { aurora, aurora2 } from './space.js';
 function tickAurora(){
   aurora.position.set(G.P.x, G.P.y + 400, G.P.z - 2200);
   aurora2.position.set(G.P.x, G.P.y + 350, G.P.z - 2100);
@@ -253,7 +245,6 @@ function play(dt){
     G.nextZ -= Math.max(55, 88 - dist()/150);
   }
 
-  /* slices */
   for (const o of sl){
     if (!o.visible) continue;
     const u = o.userData;
@@ -275,7 +266,6 @@ function play(dt){
     } else if (o.position.z > G.P.z + 30) o.visible = false;
   }
 
-  /* obstacles */
   for (const o of ob){
     if (!o.visible) continue;
     const u = o.userData;
@@ -297,7 +287,6 @@ function play(dt){
     if (o.position.z > G.P.z + 40) o.visible = false;
   }
 
-  /* rings */
   for (const o of rg){
     if (!o.visible) continue;
     const u = o.userData;
@@ -323,7 +312,6 @@ function play(dt){
   checkMission();
   tickTrail(dt, G.P.boost);
 
-  /* camera (steep POV) */
   G.shake = Math.max(0, G.shake - dt*2);
   const kc = 1 - Math.exp(-6*dt);
   cam.position.x += (G.P.x - G.P.vx*.3 + (Math.random()-.5)*G.shake*.7 - cam.position.x) * kc;
@@ -380,11 +368,15 @@ function frame(now){
   const cx = Math.floor(px/100), cz = Math.floor(pz/100);
   if (cx !== G.hc[0] || cz !== G.hc[1]){ G.hc = [cx, cz]; laySt(cx, cz); }
 
-  ground.position.x = px; ground.position.z = pz;
+  /* --- GROUND: keep texture locked to world coordinates --- */
+  ground.position.x = px;
+  ground.position.z = pz;
+  gt.offset.set(px / GROUND_TILE, -pz / GROUND_TILE);
   ground.visible = G.alt < 1900;
-  town.visible   = G.alt < 1500;
-  traf.visible   = G.alt < 700;
-  pedG.visible   = G.alt < 300;
+
+  town.visible = G.alt < 1500;
+  traf.visible = G.alt < 700;
+  pedG.visible = G.alt < 300;
   if (traf.visible) updCars(px, pz);
   if (pedG.visible) updPeds(px, pz);
 
@@ -403,7 +395,6 @@ laySt(0, 0);
 for (let i = 0; i < NC; i++) spawnCloud(i, true);
 palette();
 
-/* Title-screen preview: Dave floating in his room */
 G.P.x = 50; G.P.y = 1.45; G.P.z = 51.9;
 dave.position.set(50, 1.45, 51.9);
 dave.visible = true;
