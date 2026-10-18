@@ -2,8 +2,33 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>UP THERE</title>
-<link rel="stylesheet" href="style.css">
-</head><body>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none}
+html,body{margin:0;height:100%;overflow:hidden;background:#0b1230;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#fff}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(8,12,40,.5);z-index:5;text-align:center;padding:20px}
+.ov.h,.hud.h,.hb.h{display:none}
+h1{font-size:clamp(46px,15vw,110px);margin:0;letter-spacing:.08em;background:linear-gradient(#fff,#ffb86b 70%,#ff5fa2);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 18px #0008)}
+p{margin:0;opacity:.85;max-width:420px;line-height:1.4}
+button{font:700 18px system-ui,sans-serif;padding:14px 30px;border-radius:40px;border:2px solid #fff8;background:#ffffff26;color:#fff;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+button:active{background:#fff6}
+.hud{position:fixed;z-index:3;pointer-events:none;font-weight:800;text-shadow:0 2px 8px #000b}
+#sc{top:max(12px,env(safe-area-inset-top));left:14px;font-size:22px}
+#sc small{display:block;font-size:13px;opacity:.85}
+#di{top:max(12px,env(safe-area-inset-top));right:70px;text-align:right;font-size:18px}
+#rg{top:22%;width:100%;text-align:center;font-size:clamp(20px,5vw,34px);letter-spacing:.12em;opacity:0;transition:opacity .8s}
+#sub{bottom:24%;width:100%;text-align:center;padding:0 16px;font-size:clamp(16px,4vw,22px);opacity:0;transition:opacity .4s}
+#ms{top:max(52px,calc(env(safe-area-inset-top) + 40px));left:14px;font-size:13px;opacity:.9}
+#bb{bottom:max(22px,env(safe-area-inset-bottom));right:110px;width:110px;height:10px;border-radius:6px;background:#0006;border:1px solid #fff6;overflow:hidden}
+#bf{height:100%;width:100%;background:linear-gradient(90deg,#ffd35a,#ff5fa2)}
+.hb{position:fixed;z-index:4;pointer-events:auto}
+#bo{bottom:max(14px,env(safe-area-inset-bottom));right:14px;width:86px;height:86px;border-radius:50%;padding:0;font-size:34px}
+#pb{top:max(10px,env(safe-area-inset-top));right:12px;width:46px;height:46px;border-radius:50%;padding:0;font-size:18px}
+#sk{bottom:max(14px,env(safe-area-inset-bottom));left:14px;padding:10px 20px;font-size:15px}
+#js{position:fixed;z-index:3;width:110px;height:110px;margin:-55px 0 0 -55px;border-radius:50%;border:2px solid #fff7;background:#ffffff12;pointer-events:none;display:none}
+#jk{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:#fffa}
+#err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:30px;background:#200;z-index:9;font-size:18px}
+</style></head><body>
 <canvas id="c"></canvas>
 <div id="err">Three.js failed to load.<br>Check your internet connection and refresh the page.</div>
 <div id="sc" class="hud h"></div><div id="di" class="hud h"></div>
@@ -14,7 +39,28 @@
 <div id="title" class="ov"><h1>UP THERE</h1><p>Dave was just watching telly. Now gravity has left the building.</p><p id="best" style="font-size:14px"></p><button id="go">▶ START</button><p style="font-size:13px">Drag anywhere to steer · hold ⚡ to boost<br>Keyboard: WASD / arrows + Space · P to pause</p></div>
 <div id="pause" class="ov h"><h1 style="font-size:54px">PAUSED</h1><button id="rs">Resume</button><button id="rst">Restart flight</button><button id="so">Sound: on</button><button id="iv">Invert up/down: off</button><button id="lw">Low effects: off</button></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/GLTFLoader.js"></script>
+<!-- Three.js r128 + GLTFLoader from jsdelivr -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+  // If jsdelivr fails, try unpkg as fallback
+  if (typeof THREE === 'undefined'){
+    console.warn('[BOOT] jsdelivr failed for THREE — trying unpkg');
+    document.write('<script src="https://unpkg.com/three@0.128.0/build/three.min.js"><\/script>');
+    document.write('<script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"><\/script>');
+  }
+</script>
+<script>
+  // Diagnostic — runs immediately after CDN scripts
+  if (typeof THREE === 'undefined'){
+    console.error('[BOOT] ✗ THREE failed to load from all CDNs');
+    var e = document.getElementById('err');
+    if (e) e.style.display = 'flex';
+  } else if (typeof THREE.GLTFLoader === 'undefined'){
+    console.warn('[BOOT] THREE r' + THREE.REVISION + ' OK, but GLTFLoader missing — GLB models will use procedural fallbacks');
+  } else {
+    console.log('[BOOT] ✓ THREE r' + THREE.REVISION + ' + GLTFLoader OK');
+  }
+</script>
 <script type="module" src="js/main.js"></script>
 </body></html>
