@@ -8,9 +8,33 @@ const tg = new T.BufferGeometry();
 tg.setAttribute('position', new T.BufferAttribute(tp, 3));
 export let th = 0;
 
-export const trail = new T.Points(tg, new T.PointsMaterial({
-  color:0xfff2c8, size:1.0, transparent:true, opacity:.32,
-  blending:T.AdditiveBlending, depthWrite:false, sizeAttenuation:true
+export const trail = new T.Points(tg, new T.ShaderMaterial({
+  transparent: true,
+  depthWrite: false,
+  blending: T.AdditiveBlending,
+  uniforms: {
+    uSize: { value: 1.4 },
+    uColor: { value: new T.Color(0xfff2c8) },
+    uOpacity: { value: 0.60 }
+  },
+  vertexShader: `
+    uniform float uSize;
+    void main(){
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = uSize * 260.0 / max(-mv.z, 1.0);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    void main(){
+      float r = length(gl_PointCoord - 0.5) * 2.0;
+      float a = smoothstep(1.0, 0.0, r);
+      a *= a;
+      gl_FragColor = vec4(uColor, a * uOpacity);
+    }
+  `
 }));
 trail.frustumCulled = false;
 S.add(trail);
@@ -39,7 +63,7 @@ export function tickTrail(dt, boost){
   tp[th*3+1] = G.P.y + (Math.random()-.5);
   tp[th*3+2] = G.P.z + 1.5;
   tg.attributes.position.needsUpdate = true;
-  trail.material.size = 1.4 + boost*2.0;
+  trail.material.uniforms.uSize.value = 1.4 + boost * 1.8;
 
   const so = Math.max(0, Math.min(1, (G.P.fs-45)/60));
   streaks.material.opacity = .5*so;
