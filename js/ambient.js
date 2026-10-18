@@ -6,7 +6,6 @@ import { sl } from './world/items.js';
 
 function M(c, o){ return new T.MeshLambertMaterial(Object.assign({color:c, fog:false}, o||{})); }
 function MB(c, o){ return new T.MeshBasicMaterial(Object.assign({color:c, fog:false}, o||{})); }
-/* Shark materials specifically respect fog so they don't glow through it */
 function SH(c){ return new T.MeshLambertMaterial({color:c}); }
 
 function fwd(){ return { fx: Math.sin(G.P.yaw), fz: -Math.cos(G.P.yaw) }; }
@@ -30,11 +29,10 @@ export function isPlayerTrapped(){
 }
 
 /* ============================================================
-   WATER TORNADO — layered shells + foam + spray
+   WATER TORNADO
    ============================================================ */
 const wt = new T.Group(); S.add(wt);
 {
-  /* Three concentric shells with different radii and opacity */
   const shellDefs = [
     {r1: 42, r2: 8,  h: 350, color: 0x3366aa, opacity: 0.22},
     {r1: 32, r2: 6,  h: 340, color: 0x6699cc, opacity: 0.30},
@@ -58,7 +56,6 @@ const wt = new T.Group(); S.add(wt);
     shells.push(cyl);
   }
 
-  /* Base foam ring */
   const foam = new T.Mesh(
     new T.RingGeometry(44, 58, 32),
     new T.MeshBasicMaterial({
@@ -70,7 +67,6 @@ const wt = new T.Group(); S.add(wt);
   foam.position.y = 0.8;
   wt.add(foam);
 
-  /* Top mist */
   const mist = new T.Mesh(
     new T.CircleGeometry(46, 16),
     new T.MeshBasicMaterial({
@@ -82,7 +78,6 @@ const wt = new T.Group(); S.add(wt);
   mist.position.y = 340;
   wt.add(mist);
 
-  /* 16 spiral lines */
   for (let i = 0; i < 16; i++){
     const pts = [];
     for (let j = 0; j <= 40; j++){
@@ -99,7 +94,6 @@ const wt = new T.Group(); S.add(wt);
     ));
   }
 
-  /* Base water disk */
   const disk = new T.Mesh(
     new T.CircleGeometry(72, 32),
     new T.MeshBasicMaterial({color: 0x2a4a77, transparent: true, opacity: 0.5, fog: false})
@@ -108,7 +102,6 @@ const wt = new T.Group(); S.add(wt);
   disk.position.y = 0.5;
   wt.add(disk);
 
-  /* Rising water particles */
   const NSP = 300;
   const spPos = new Float32Array(NSP * 3);
   const spT = new Float32Array(NSP);
@@ -127,7 +120,6 @@ const wt = new T.Group(); S.add(wt);
   }));
   wt.add(spPts);
 
-  /* Base spray particles */
   const NSPRAY = 90;
   const sprayPos = new Float32Array(NSPRAY * 3);
   for (let i = 0; i < NSPRAY; i++) sprayPos[i*3+1] = -9999;
@@ -184,98 +176,134 @@ let astA = false, astT = 0;
 const astVel = new T.Vector3();
 
 /* ============================================================
-   SHARKS — tapered body, proper fins, snapping jaw
+   SHARK — lathe body split at mid, oval mouth, swaying tail
    ============================================================ */
 function buildShark(){
   const g = new T.Group();
 
   const bodyMat  = SH(0x445566);
   const bellyMat = SH(0x99aabb);
-  const teethMat = SH(0xdddddd);
+  const teethMat = SH(0xf0f0f0);
   const eyeMat   = SH(0x111111);
   const mouthMat = SH(0x220000);
+  const browMat  = SH(0x2a3344);
 
-  /* --- Tapered body via lathe (fat middle, narrow ends) --- */
-  const profile = [
+  /* ---- Front body: nose to just past mid (Z: -27.5 → +2.5) ---- */
+  const frontProfile = [
     new T.Vector2(0.2, 0),
     new T.Vector2(1.5, 3),
-    new T.Vector2(3, 7),
+    new T.Vector2(3,   7),
     new T.Vector2(4.5, 13),
     new T.Vector2(5.5, 20),
-    new T.Vector2(6, 27),
-    new T.Vector2(5.8, 34),
-    new T.Vector2(5, 40),
-    new T.Vector2(3.5, 46),
-    new T.Vector2(2, 51),
-    new T.Vector2(0.3, 55)
+    new T.Vector2(6,   27.5),
+    new T.Vector2(5.9, 30)
   ];
-  const bodyGeo = new T.LatheGeometry(profile, 20);
-  bodyGeo.rotateX(Math.PI / 2);      // Y axis becomes Z (length)
-  bodyGeo.translate(0, 0, -27.5);    // centre: nose at z=-27.5, tail at z=+27.5
-  const body = new T.Mesh(bodyGeo, bodyMat);
-  body.scale.set(1, 0.72, 1);        // flatten vertically → shark oval cross-section
-  g.add(body);
+  const frontGeo = new T.LatheGeometry(frontProfile, 22);
+  frontGeo.rotateX(Math.PI / 2);
+  frontGeo.translate(0, 0, -27.5);
+  const frontBody = new T.Mesh(frontGeo, bodyMat);
+  frontBody.scale.set(1, 0.72, 1);
+  g.add(frontBody);
 
-  /* Lighter belly */
-  const belly = new T.Mesh(new T.SphereGeometry(1, 14, 8), bellyMat);
-  belly.scale.set(4.2, 1.8, 22);
-  belly.position.set(0, -2.5, 0);
-  g.add(belly);
+  /* Front belly patch */
+  const frontBelly = new T.Mesh(new T.SphereGeometry(1, 16, 10), bellyMat);
+  frontBelly.scale.set(4.1, 1.5, 14);
+  frontBelly.position.set(0, -2.6, -14);
+  g.add(frontBelly);
 
-  /* --- Mouth / Jaw group --- */
+  /* ---- Tail group: pivot at Z=0, so tail sways from mid body ---- */
+  const tailGroup = new T.Group();
+  g.add(tailGroup);
+
+  const tailProfile = [
+    new T.Vector2(5.9, 0),
+    new T.Vector2(6,   2.5),
+    new T.Vector2(5.8, 7),
+    new T.Vector2(5,   13),
+    new T.Vector2(3.5, 19),
+    new T.Vector2(2,   24),
+    new T.Vector2(0.3, 30)
+  ];
+  const tailGeo = new T.LatheGeometry(tailProfile, 22);
+  tailGeo.rotateX(Math.PI / 2);
+  tailGeo.translate(0, 0, -2.5);
+  const tailBody = new T.Mesh(tailGeo, bodyMat);
+  tailBody.scale.set(1, 0.72, 1);
+  tailGroup.add(tailBody);
+
+  /* Tail belly */
+  const tailBelly = new T.Mesh(new T.SphereGeometry(1, 16, 10), bellyMat);
+  tailBelly.scale.set(4.1, 1.5, 14);
+  tailBelly.position.set(0, -2.6, 14);
+  tailGroup.add(tailBelly);
+
+  /* ---- Oval mouth cavity ---- */
+  const mouthCavity = new T.Mesh(
+    new T.SphereGeometry(1, 18, 12),
+    mouthMat
+  );
+  mouthCavity.scale.set(3.4, 1.3, 2.6);
+  mouthCavity.position.set(0, 0.6, -23.5);
+  g.add(mouthCavity);
+
+  /* ---- Jaw pivot — curved lower jaw (no boxes) ---- */
   const jawPivot = new T.Group();
-  jawPivot.position.set(0, -1.2, -22);
+  jawPivot.position.set(0, -2.2, -22);
   g.add(jawPivot);
 
-  /* Lower jaw — extends forward from pivot */
-  const lowerJaw = new T.Mesh(new T.BoxGeometry(3.6, 0.9, 7.5), bodyMat);
-  lowerJaw.position.set(0, -0.45, -3.5);
+  const lowerJaw = new T.Mesh(
+    new T.SphereGeometry(1, 20, 12),
+    bodyMat
+  );
+  lowerJaw.scale.set(3.5, 0.9, 4.2);
+  lowerJaw.position.set(0, -0.3, -3.5);
   jawPivot.add(lowerJaw);
 
-  /* Dark mouth cavity on lower jaw */
-  const lowerMouth = new T.Mesh(new T.BoxGeometry(2.8, 0.2, 6), mouthMat);
-  lowerMouth.position.set(0, 0.05, -3.2);
-  jawPivot.add(lowerMouth);
-
-  /* Lower teeth (on the animated jaw) */
-  for (let i = 0; i < 8; i++){
-    const tooth = new T.Mesh(new T.ConeGeometry(0.28, 0.9, 4), teethMat);
-    tooth.position.set(-1.4 + i * 0.4, 0.35, -5.2);
-    jawPivot.add(tooth);
-  }
-
-  /* Upper jaw surface (on body, above mouth) */
-  const upperJaw = new T.Mesh(new T.BoxGeometry(3.6, 0.7, 6), bodyMat);
-  upperJaw.position.set(0, 0.3, -23);
-  g.add(upperJaw);
-
-  /* Upper teeth (fixed) */
-  for (let i = 0; i < 8; i++){
-    const tooth = new T.Mesh(new T.ConeGeometry(0.28, 0.9, 4), teethMat);
-    tooth.position.set(-1.4 + i * 0.4, -0.1, -25);
+  /* Upper teeth arc — curved forward slightly at centre */
+  for (let i = 0; i < 11; i++){
+    const t = i / 10;
+    const angle = -Math.PI * 0.5 + t * Math.PI;
+    const tx = Math.sin(angle) * 3.0;
+    const tz = -23 + Math.cos(angle) * -2;
+    const tooth = new T.Mesh(new T.ConeGeometry(0.24, 0.85, 4), teethMat);
+    tooth.position.set(tx, 0.35, tz);
     tooth.rotation.x = Math.PI;
     g.add(tooth);
   }
 
-  /* --- Big eyes --- */
+  /* Lower teeth arc — on jaw so they move when it opens */
+  for (let i = 0; i < 11; i++){
+    const t = i / 10;
+    const angle = -Math.PI * 0.5 + t * Math.PI;
+    const tx = Math.sin(angle) * 3.0;
+    const tz = -3 + Math.cos(angle) * -2;
+    const tooth = new T.Mesh(new T.ConeGeometry(0.24, 0.8, 4), teethMat);
+    tooth.position.set(tx, 0.35, tz);
+    jawPivot.add(tooth);
+  }
+
+  /* ---- Big eyes with brow ---- */
   for (const sx of [-1, 1]){
-    /* Slight raised socket */
-    const socket = new T.Mesh(new T.SphereGeometry(1.4, 12, 10), bodyMat);
+    const socket = new T.Mesh(new T.SphereGeometry(1.7, 12, 10), bodyMat);
     socket.position.set(sx * 3.2, 2.2, -19);
     g.add(socket);
 
-    /* Eye — big dark ball */
-    const eye = new T.Mesh(new T.SphereGeometry(1.15, 14, 12), eyeMat);
-    eye.position.set(sx * 3.6, 2.2, -19.5);
+    const eye = new T.Mesh(new T.SphereGeometry(1.35, 16, 14), eyeMat);
+    eye.position.set(sx * 3.6, 2.2, -19.7);
     g.add(eye);
 
-    /* Small bright glint */
-    const glint = new T.Mesh(new T.SphereGeometry(0.35, 8, 8), SH(0xffffff));
-    glint.position.set(sx * 3.9, 2.6, -20.3);
+    const glint = new T.Mesh(new T.SphereGeometry(0.4, 8, 8), SH(0xffffff));
+    glint.position.set(sx * 3.9, 2.6, -20.5);
     g.add(glint);
+
+    /* Brow ridge above eye */
+    const brow = new T.Mesh(new T.BoxGeometry(2.4, 0.4, 1.6), browMat);
+    brow.position.set(sx * 3.6, 3.4, -19);
+    brow.rotation.z = sx * -0.15;
+    g.add(brow);
   }
 
-  /* --- Dorsal fin (top, points up) --- */
+  /* ---- Dorsal fin (points up) ---- */
   {
     const shape = new T.Shape();
     shape.moveTo(0, 0);
@@ -284,15 +312,15 @@ function buildShark(){
     shape.closePath();
     const geo = new T.ExtrudeGeometry(shape, {depth: 0.5, bevelEnabled: false});
     geo.translate(-3, 0, -0.25);
-    geo.rotateY(Math.PI / 2);   // orient along Z, apex up
+    geo.rotateY(Math.PI / 2);
     const dorsal = new T.Mesh(geo, bodyMat);
     dorsal.position.set(0, 4.5, -2);
     g.add(dorsal);
   }
 
-  /* --- Tail fin: triangular upper lobe + lower lobe at the BACK --- */
+  /* ---- Tail fin — attached to tailGroup, at the very back ---- */
   {
-    /* Upper lobe (bigger, points up and back) */
+    /* Upper lobe — big, points up and back */
     const shape = new T.Shape();
     shape.moveTo(0, 0);
     shape.lineTo(8, 10);
@@ -300,12 +328,12 @@ function buildShark(){
     shape.closePath();
     const geo = new T.ExtrudeGeometry(shape, {depth: 0.5, bevelEnabled: false});
     geo.translate(0, 0, -0.25);
-    geo.rotateY(-Math.PI / 2);   // +X becomes +Z (backward)
+    geo.rotateY(-Math.PI / 2);
     const upper = new T.Mesh(geo, bodyMat);
-    upper.position.set(0, 1, 27);
-    g.add(upper);
+    upper.position.set(0, 0, 29);
+    tailGroup.add(upper);
 
-    /* Lower lobe (smaller, points down and back) */
+    /* Lower lobe — smaller, points down and back */
     const shape2 = new T.Shape();
     shape2.moveTo(0, 0);
     shape2.lineTo(6, -7);
@@ -315,11 +343,11 @@ function buildShark(){
     geo2.translate(0, 0, -0.25);
     geo2.rotateY(-Math.PI / 2);
     const lower = new T.Mesh(geo2, bodyMat);
-    lower.position.set(0, -1, 27);
-    g.add(lower);
+    lower.position.set(0, -1.5, 29);
+    tailGroup.add(lower);
   }
 
-  /* --- Pectoral fins (sides) --- */
+  /* ---- Pectoral fins ---- */
   for (const sx of [-1, 1]){
     const shape = new T.Shape();
     shape.moveTo(0, 0);
@@ -336,7 +364,7 @@ function buildShark(){
   }
 
   g.scale.setScalar(1.35);
-  g.userData = { jawPivot };
+  g.userData = { jawPivot, tailGroup };
   return g;
 }
 
@@ -349,7 +377,7 @@ for (let i = 0; i < 3; i++){
 }
 
 /* ============================================================
-   DRAGONS — horizontal wings, square jaw, face, periodic fire
+   DRAGON — bigger, spikes down spine, hinged wings
    ============================================================ */
 function buildDragon(){
   const g = new T.Group();
@@ -365,12 +393,22 @@ function buildDragon(){
     pieces.push(s);
   }
 
-  /* Head — box, square shape */
+  /* Row of shrinking spikes down spine / tail */
+  for (let i = 2; i < 10; i++){
+    const r = 4 - i * 0.35;
+    const spikeH = 1.8 + r * 0.5;
+    const spike = new T.Mesh(new T.ConeGeometry(0.7 + r * 0.15, spikeH, 4), redD);
+    spike.position.set(0, r + spikeH * 0.35, i * 3.5);
+    spike.rotation.x = -0.15;
+    g.add(spike);
+  }
+
+  /* Head — square jaw */
   const head = new T.Mesh(new T.BoxGeometry(5, 4, 8), red);
   head.position.z = -6;
   g.add(head);
 
-  /* Upper jaw / snout */
+  /* Upper snout */
   const upperJaw = new T.Mesh(new T.BoxGeometry(4.4, 1.6, 5.5), red);
   upperJaw.position.set(0, -0.4, -11);
   g.add(upperJaw);
@@ -384,7 +422,6 @@ function buildDragon(){
   lowerJaw.position.set(0, -0.6, -2.6);
   jawPivot.add(lowerJaw);
 
-  /* Upper teeth on snout */
   for (let i = 0; i < 6; i++){
     const tooth = new T.Mesh(new T.ConeGeometry(0.25, 0.8, 4), MB(0xffffff));
     tooth.position.set(-1.6 + i*0.65, -1.2, -13.5);
@@ -392,7 +429,7 @@ function buildDragon(){
     g.add(tooth);
   }
 
-  /* Big eyes */
+  /* Eyes */
   for (const sx of [-1, 1]){
     const socket = new T.Mesh(new T.SphereGeometry(1.1, 10, 8), redD);
     socket.position.set(sx * 2.3, 0.8, -7.5);
@@ -422,21 +459,49 @@ function buildDragon(){
     g.add(horn);
   }
 
-  /* Wings — HORIZONTAL, extend sideways, flap up/down */
+  /* ---- Wings: inner + outer hinged, both horizontal ---- */
   const wl = new T.Group(); wl.position.set(-2.5, 1, 0);
-  const wlm = new T.Mesh(new T.PlaneGeometry(16, 9), redD);
-  wlm.rotation.x = -Math.PI / 2;   // lay flat (horizontal)
-  wlm.position.x = -10;             // extends from pivot outward
-  wlm.material.side = T.DoubleSide;
-  wl.add(wlm);
+  {
+    const wlInner = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
+    wlInner.rotation.x = -Math.PI / 2;
+    wlInner.position.x = -4;
+    wlInner.material.side = T.DoubleSide;
+    wl.add(wlInner);
+
+    const wlOuterPivot = new T.Group();
+    wlOuterPivot.position.x = -8;
+    wl.add(wlOuterPivot);
+
+    const wlOuter = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
+    wlOuter.rotation.x = -Math.PI / 2;
+    wlOuter.position.x = -4;
+    wlOuter.material.side = T.DoubleSide;
+    wlOuterPivot.add(wlOuter);
+
+    wl.userData.outerPivot = wlOuterPivot;
+  }
   g.add(wl);
 
   const wr = new T.Group(); wr.position.set(2.5, 1, 0);
-  const wrm = new T.Mesh(new T.PlaneGeometry(16, 9), redD);
-  wrm.rotation.x = -Math.PI / 2;
-  wrm.position.x = 10;
-  wrm.material.side = T.DoubleSide;
-  wr.add(wrm);
+  {
+    const wrInner = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
+    wrInner.rotation.x = -Math.PI / 2;
+    wrInner.position.x = 4;
+    wrInner.material.side = T.DoubleSide;
+    wr.add(wrInner);
+
+    const wrOuterPivot = new T.Group();
+    wrOuterPivot.position.x = 8;
+    wr.add(wrOuterPivot);
+
+    const wrOuter = new T.Mesh(new T.PlaneGeometry(8, 9), redD);
+    wrOuter.rotation.x = -Math.PI / 2;
+    wrOuter.position.x = 4;
+    wrOuter.material.side = T.DoubleSide;
+    wrOuterPivot.add(wrOuter);
+
+    wr.userData.outerPivot = wrOuterPivot;
+  }
   g.add(wr);
 
   /* Fire particle pool */
@@ -451,8 +516,13 @@ function buildDragon(){
   }));
   g.add(drfPts);
 
+  /* Bigger overall — 1.3× */
+  g.scale.setScalar(1.3);
+
   g.userData = {
     pieces, wl, wr, jawPivot,
+    wlOuterPivot: wl.userData.outerPivot,
+    wrOuterPivot: wr.userData.outerPivot,
     drfPos, drfGeo, NDRF,
     drfV: Array.from({length: NDRF}, () => ({x:0, y:0, z:0, life:0}))
   };
@@ -475,7 +545,7 @@ for (let i = 0; i < 3; i++){
 }
 
 /* ============================================================
-   OCTOPUS — unchanged from previous version
+   OCTOPUS
    ============================================================ */
 const oct = new T.Group(); S.add(oct);
 {
@@ -583,7 +653,7 @@ oct.visible = false;
 let octA = false, octT = 0;
 
 /* ============================================================
-   EXPLOSIONS (kills only — not for pizza eating)
+   EXPLOSIONS
    ============================================================ */
 const explosions = [];
 function spawnExplosion(pos, color){
@@ -638,7 +708,6 @@ export function killTarget(t){
     }
   }
   t.obj.visible = false;
-
   G.Q.bonus += 100;
   G.P.meter = Math.min(1, G.P.meter + 0.30);
 }
@@ -711,14 +780,11 @@ function tickTornado(dt){
 
   const u = wt.userData;
 
-  /* Shells rotate at slightly different speeds for layered swirl */
   u.shells.forEach((s, i) => {
     s.rotation.y = wtSpin * (1 + i * 0.4);
-    /* Pulse opacity subtly */
     s.material.opacity = s.material.opacity * 0.98 + 0.001;
   });
 
-  /* Rising particles */
   for (let i = 0; i < u.NSP; i++){
     u.spT[i] += dt * 0.22;
     if (u.spT[i] > 1) u.spT[i] -= 1;
@@ -731,7 +797,6 @@ function tickTornado(dt){
   }
   u.spGeo.attributes.position.needsUpdate = true;
 
-  /* Base spray — spiral outward + up */
   for (let i = 0; i < u.NSPRAY; i++){
     const px = u.sprayPos[i*3];
     const py = u.sprayPos[i*3 + 1];
@@ -754,7 +819,6 @@ function tickTornado(dt){
   }
   u.sprayGeo.attributes.position.needsUpdate = true;
 
-  /* Player interaction */
   const dx = G.P.x - wt.position.x;
   const dz = G.P.z - wt.position.z;
   const d = Math.hypot(dx, dz) || 1;
@@ -825,8 +889,11 @@ function tickSharks(dt){
     s.life -= dt;
     s.phase += dt;
 
-    /* Snap jaw open and closed */
-    s.obj.userData.jawPivot.rotation.x = -Math.abs(Math.sin(s.phase * 4)) * 0.5;
+    /* Jaw chomp */
+    s.obj.userData.jawPivot.rotation.x = -Math.abs(Math.sin(s.phase * 4)) * 0.55;
+
+    /* Tail sway side-to-side */
+    s.obj.userData.tailGroup.rotation.y = Math.sin(s.phase * 3.5) * 0.35;
 
     if (!s.target || !s.target.visible) s.target = findNearestSlice(s.obj.position);
 
@@ -840,7 +907,6 @@ function tickSharks(dt){
       s.obj.rotation.z = Math.sin(s.phase * 3) * 0.12;
 
       if (d < 16){
-        /* Eat pizza — silent, no glow */
         s.target.visible = false;
         s.target = null;
       } else {
@@ -865,10 +931,14 @@ function tickDragons(dt){
 
     const u = d.obj.userData;
 
-    /* Wings flap — horizontal, tip swings up/down */
-    const flap = Math.sin(d.phase * 5) * 0.55;
+    /* Wing flap — inner rotates, outer trails with phase lag */
+    const flap        = Math.sin(d.phase * 5) * 0.5;
+    const flapDelayed = Math.sin(d.phase * 5 - 0.6) * 0.35;
+
     u.wl.rotation.z = flap;
+    u.wlOuterPivot.rotation.z = flapDelayed;
     u.wr.rotation.z = -flap;
+    u.wrOuterPivot.rotation.z = -flapDelayed;
 
     /* Body undulates */
     u.pieces.forEach((s, i) => {
@@ -891,7 +961,6 @@ function tickDragons(dt){
     /* Fire breathing — periodic bursts */
     if (d.fireBurstTime > 0){
       d.fireBurstTime -= dt;
-      /* Aggressive particle spawn during burst */
       for (let i = 0; i < u.NDRF; i++){
         const v = u.drfV[i];
         if (v.life <= 0 && Math.random() < 0.5){
@@ -912,7 +981,6 @@ function tickDragons(dt){
       }
     }
 
-    /* Update fire particles */
     for (let i = 0; i < u.NDRF; i++){
       const v = u.drfV[i];
       if (v.life > 0){
@@ -925,7 +993,6 @@ function tickDragons(dt){
     }
     u.drfGeo.attributes.position.needsUpdate = true;
 
-    /* Back off if too close */
     if (dl < 90){
       d.obj.position.x -= (dx/dl) * 40 * dt;
       d.obj.position.z -= (dz/dl) * 40 * dt;
@@ -1058,4 +1125,4 @@ export function tickAmbient(dt){
   tickDragons(dt);
   tickOctopus(dt);
   tickExplosions(dt);
-}
+                    }
