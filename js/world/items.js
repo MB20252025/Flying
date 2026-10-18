@@ -7,7 +7,7 @@ import { M } from '../utils.js';
 const mObs = [M(0xe8a93c,{emissive:0x331a00}), M(0x6a3f9a), M(0xe879a8,{emissive:0x331020})];
 
 export const sl = [];
-for (let i=0;i<26;i++){ const s = mkSlice(); s.visible = false; S.add(s); sl.push(s); }
+for (let i=0;i<60;i++){ const s = mkSlice(); s.visible = false; S.add(s); sl.push(s); }
 
 export const ob = [];
 for (let i=0;i<12;i++){
@@ -36,7 +36,7 @@ for (let i=0;i<12;i++){
 }
 
 export const rg = [];
-for (let i=0;i<6;i++){
+for (let i=0;i<16;i++){
   const m = new T.Mesh(new T.TorusGeometry(8,.7,8,32), new T.MeshBasicMaterial({color:0xff7ac8}));
   m.visible = false;
   S.add(m); rg.push(m);
@@ -72,12 +72,7 @@ function obst(x,y,z,k){
 
 /*
   pattern(ax, ay, az, fx, fz)
-    ax, ay, az  = centre of the pattern, ahead of the player
-    fx, fz      = forward direction (unit vector, y-component = 0)
-  All item offsets below are interpreted in the flight-relative frame:
-    right = (fz, 0, -fx)
-    up    = (0, 1, 0)
-    fwd   = (fx, 0, fz)
+    Places pizza lines, rings, obstacles ahead of the player in the given heading.
 */
 export function pattern(ax, ay, az, fx, fz){
   const rx = fz, rz = -fx;
@@ -90,20 +85,21 @@ export function pattern(ax, ay, az, fx, fz){
   const r = rnd();
   const diff = Math.min(.35, dist()/6000);
 
-  if (r < .36){
+  if (r < .32){
     const d = rnd() < .5 ? 1 : -1;
-    for (let i = 0; i < 9; i++){
+    for (let i = 0; i < 12; i++){
       const p = place(Math.sin(i*.7) * 22 * d, Math.cos(i*.7) * 8, i * 14);
-      slice(p.x, p.y, p.z, i === 4 && rnd() < .3);
+      slice(p.x, p.y, p.z, i === 6 && rnd() < .3);
     }
-  } else if (r < .58){
+  } else if (r < .65){
+    // Rings — much more common now
     const m = put(rg, ax, ay, az);
     if (m) m.userData.done = false;
-    [30, 15, -18].forEach(of => {
+    [30, 15, 0, -18].forEach(of => {
       const p = place(0, 0, of);
       slice(p.x, p.y, p.z);
     });
-  } else if (r < .58 + .27 + diff){
+  } else if (r < .65 + .20 + diff){
     const gap = (rnd()*3|0) - 1;
     for (let i = -1; i <= 1; i++){
       if (i !== gap){
