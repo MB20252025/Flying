@@ -19,16 +19,25 @@ export function say(t, s){
   st_ = setTimeout(()=>e.style.opacity = 0, (s||3)*1000);
 }
 
+export const QUOTES = [
+  '"Never trust a cloud that knows your name."',
+  '"Have you ever seen a pigeon land on another pigeon? Exactly."',
+  '"The secret to flying is mostly not falling."',
+  '"Up is just down that\'s changed its mind."',
+  '"I\'ve seen the Golden Door. It\'s mostly door."',
+  '"Pizza is a circle that wants to be a triangle."'
+];
+
 export const MS = [
-  ['Collect 15 pizza slices', () => G.Q.slices, 15],
-  ['Fly through 3 rings',     () => G.Q.rings,  3],
-  ['Fly 500m without a bump', () => G.Q.clean, 500, 1],
-  ['Collect 40 pizza slices', () => G.Q.slices, 40],
-  ['Fly through 8 rings',     () => G.Q.rings,  8],
-  ['Fly 1500m without a bump',() => G.Q.clean, 1500, 1],
-  ['Collect 100 pizza slices',() => G.Q.slices, 100],
-  ['Reach 1000 altitude',     () => G.P.y,     1000, 1],
-  ['Reach SPACE (2700 altitude)', () => G.P.y, 2700, 1]
+  ['Collect 15 pizza slices',  () => G.Q.slices, 15],
+  ['Fly through 3 rings',      () => G.Q.rings,  3],
+  ['Fly 500m without a bump',  () => G.Q.clean, 500, 1],
+  ['Collect 40 pizza slices',  () => G.Q.slices, 40],
+  ['Fly through 8 rings',      () => G.Q.rings,  8],
+  ['Fly 1500m without a bump', () => G.Q.clean, 1500, 1],
+  ['Collect 100 pizza slices', () => G.Q.slices, 100],
+  ['Reach 1000 altitude',      () => G.P.y,     1000, 1],
+  ['Reach SPACE (2700 altitude)', () => G.P.y,  2700, 1]
 ];
 
 export function checkMission(){
