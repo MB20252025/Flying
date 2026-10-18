@@ -3,17 +3,8 @@ import { G } from './game.js';
 import { S, R, cam } from './scene.js';
 import { CFG } from './config.js';
 
-/* ============================================================
-   KING KONG TOWER
-   - Tower sits in its own cleared town cell, dead ahead of the start
-   - Kong spirals UP the building, leaps, roars + beats his chest at the top, climbs back down
-   - 3 fighters circle him, banking, firing tracers; hits spark and make him flinch
-   - Flames + smoke pour out of 18 windows
-   - Windows / bodies / tracers are instanced = very few draw calls
-   ============================================================ */
-
-export const TX = 50, TZ = -450;                 // tower base (world). Clear town cell (0,-5) in town.js
-const SEG = 24, SEGH = 90, W0 = 84, TAPER = .975;
+export const TX = -150, TZ = -948;
+const SEG = 10, SEGH = 65, W0 = 84, TAPER = .975;
 const TOP_H = SEG * SEGH;
 const segW = i => W0 * Math.pow(TAPER, i);
 const widthAt = y => segW(Math.min(SEG - 1, Math.max(0, Math.floor(y / SEGH))));
@@ -37,8 +28,8 @@ function buildTower(){
   for (let i = 0; i < SEG; i++){
     const w = segW(i), y0 = i * SEGH;
     setI(bodies, nb++, 0, y0 + SEGH / 2, 0, w, SEGH, w, STONE[i % 4]);
-    setI(bodies, nb++, 0, y0 + SEGH - 1.5, 0, w + 6, 3, w + 6, 0x3a2e22);          // ledge
-    for (const sx of [-1, 1]) for (const sz of [-1, 1])                              // corner pillars
+    setI(bodies, nb++, 0, y0 + SEGH - 1.5, 0, w + 6, 3, w + 6, 0x3a2e22);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1])
       setI(bodies, nb++, sx * w / 2, y0 + SEGH / 2, sz * w / 2, 5, SEGH + .2, 5, 0x4a3d2e);
   }
   bodies.count = nb; bodies.frustumCulled = false; g.add(bodies);
@@ -47,7 +38,7 @@ function buildTower(){
   const NRM = [[0, 1], [1, 0], [0, -1], [-1, 0]], TAN = [[1, 0], [0, -1], [-1, 0], [0, 1]];
   const fireSet = new Set();
   for (let k = 0; k < 18; k++){
-    const seg = 3 + Math.floor(k * (SEG - 5) / 18);
+    const seg = Math.floor(k * (SEG - 1) / 18);
     fireSet.add(seg * 1000 + ((k * 3) % 4) * 100 + ((k * 5) % 4) * 10 + (k % 3));
   }
   const fires = []; let nw = 0;
@@ -65,13 +56,12 @@ function buildTower(){
   }
   wins.count = nw; wins.frustumCulled = false; g.add(wins);
 
-  const spire = new T.Mesh(new T.CylinderGeometry(2, 12, 150, 8), ML(0x2a1a10));
-  spire.position.y = TOP_H + 75; g.add(spire);
-  const beacon = new T.Mesh(new T.SphereGeometry(14, 14, 12), MB(0xff2020));
-  beacon.position.y = TOP_H + 160; g.add(beacon);
-  const beam = new T.Mesh(new T.CylinderGeometry(8, 8, 5000, 8),
-    MB(0xff3030, { transparent: true, opacity: .3, blending: T.AdditiveBlending, depthWrite: false }));
-  beam.position.y = TOP_H + 2600; g.add(beam);
+  // Spire: 50 tall from TOP_H (650) up to 700
+  const spire = new T.Mesh(new T.CylinderGeometry(2, 10, 50, 8), ML(0x2a1a10));
+  spire.position.y = TOP_H + 25; g.add(spire);
+  // Beacon sits exactly at y = 700
+  const beacon = new T.Mesh(new T.SphereGeometry(10, 14, 12), MB(0xff2020));
+  beacon.position.y = TOP_H + 50; g.add(beacon);
   return { g, fires, wins, beacon };
 }
 
@@ -83,11 +73,11 @@ function buildKong(){
   const add = (geo, mat, x, y, z, p) => { const o = new T.Mesh(geo, mat); o.position.set(x, y, z); (p || g).add(o); return o; };
   const sph = (r, w, h) => new T.SphereGeometry(r, w || 12, h || 10);
 
-  add(sph(3, 16, 12), fur, 0, 0, 0).scale.set(1.2, 1.8, 1.2);                // torso
-  add(sph(2.6), fur, 0, 1.8, -.4).scale.set(1.6, .9, 1);                      // shoulder hump
-  add(sph(2.2, 10, 8), skin, 0, .2, 1.5).scale.set(1, 1.3, .4);               // chest
-  add(sph(2.4), furDark, 0, -2.6, .2).scale.set(1.3, .8, 1);                  // hips
-  for (let i = 0; i < 12; i++){                                               // fur tufts
+  add(sph(3, 16, 12), fur, 0, 0, 0).scale.set(1.2, 1.8, 1.2);
+  add(sph(2.6), fur, 0, 1.8, -.4).scale.set(1.6, .9, 1);
+  add(sph(2.2, 10, 8), skin, 0, .2, 1.5).scale.set(1, 1.3, .4);
+  add(sph(2.4), furDark, 0, -2.6, .2).scale.set(1.3, .8, 1);
+  for (let i = 0; i < 12; i++){
     const a = i * 2.4, t = add(new T.ConeGeometry(.5, 1.5, 5), furLite, Math.cos(a) * 3.4, 1.5 - (i % 4) * 1.4, -1.5 - Math.abs(Math.sin(a)) * 1.2);
     t.rotation.x = -1.9; t.rotation.z = Math.cos(a) * .6;
   }
@@ -95,13 +85,13 @@ function buildKong(){
   const head = new T.Group(); head.position.set(0, 4, .3); g.add(head);
   add(sph(2, 16, 12), fur, 0, 0, 0, head);
   add(sph(1.5), skin, 0, -.3, 1.2, head).scale.set(1, .9, .6);
-  add(new T.BoxGeometry(3.2, .55, .7), furDark, 0, .3, 1.55, head);          // brow
+  add(new T.BoxGeometry(3.2, .55, .7), furDark, 0, .3, 1.55, head);
   for (const sx of [-1, 1]){
     add(sph(.42, 10, 10), eyeM, sx * .65, -.05, 2.15, head);
     add(sph(.2, 8, 8), black, sx * .65, -.05, 2.5, head);
-    add(sph(.55, 8, 8), skin, sx * 2, 0, 0, head);                            // ears
-    add(sph(.15, 6, 5), black, sx * .28, -.55, 2.2, head);                    // nostrils
-    add(new T.ConeGeometry(.14, .5, 5), white, sx * .5, -.95, 2.15, head).rotation.x = Math.PI;  // fangs
+    add(sph(.55, 8, 8), skin, sx * 2, 0, 0, head);
+    add(sph(.15, 6, 5), black, sx * .28, -.55, 2.2, head);
+    add(new T.ConeGeometry(.14, .5, 5), white, sx * .5, -.95, 2.15, head).rotation.x = Math.PI;
   }
   const jaw = new T.Group(); jaw.position.set(0, -1, 1); head.add(jaw);
   add(new T.BoxGeometry(1.9, .5, 1.5), mouthM, 0, -.15, .55, jaw);
@@ -114,7 +104,7 @@ function buildKong(){
     add(sph(.95, 8, 8), fur, 0, 0, 0, el);
     add(new T.CylinderGeometry(.9, .75, 2.5, 10), fur, 0, -1.25, 0, el);
     add(sph(1.1, 10, 8), skin, 0, -2.7, 0, el).scale.set(1, 1.2, .8);
-    for (let f = -1; f <= 1; f++) add(new T.BoxGeometry(.32, 1, .38), skin, f * .42, -3.5, .1, el);   // fingers
+    for (let f = -1; f <= 1; f++) add(new T.BoxGeometry(.32, 1, .38), skin, f * .42, -3.5, .1, el);
     return { sh, el };
   };
   const leg = side => {
@@ -124,7 +114,7 @@ function buildKong(){
     add(sph(.95, 8, 8), fur, 0, 0, 0, kn);
     add(new T.CylinderGeometry(.9, .8, 2.5, 10), fur, 0, -1.25, 0, kn);
     add(new T.BoxGeometry(1.9, .8, 2.8), skin, 0, -2.7, .6, kn);
-    for (let f = -1; f <= 1; f++) add(new T.BoxGeometry(.5, .5, .7), skin, f * .6, -2.7, 2.2, kn);    // toes
+    for (let f = -1; f <= 1; f++) add(new T.BoxGeometry(.5, .5, .7), skin, f * .6, -2.7, 2.2, kn);
     return { hip, kn };
   };
   root.scale.setScalar(6);
@@ -132,22 +122,22 @@ function buildKong(){
   return root;
 }
 
-/* ---------------- fighters (nose = -Z) ---------------- */
+/* ---------------- fighters ---------------- */
 function buildFighter(){
   const g = new T.Group(), body = ML(0x556644), light = ML(0x889966), dark = MB(0x222222);
   const add = (geo, m, x, y, z) => { const o = new T.Mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
   add(new T.CylinderGeometry(.5, .32, 4, 8), body, 0, 0, 0).rotation.x = Math.PI / 2;
-  add(new T.BoxGeometry(5, .18, 1.3), light, 0, -.1, .2);                                 // wings
-  add(new T.BoxGeometry(1.8, .15, .7), light, 0, 0, 1.8);                                 // tailplane
-  add(new T.BoxGeometry(.15, .9, .8), light, 0, .45, 1.8);                                // fin
-  add(new T.SphereGeometry(.5, 8, 6), MB(0x88ddff), 0, .4, .3).scale.set(1, .7, 1.4);     // canopy
-  for (const sx of [-1, 1]) add(new T.CylinderGeometry(.06, .06, 1, 5), dark, sx * 1.3, -.1, -.6).rotation.x = Math.PI / 2;  // guns
+  add(new T.BoxGeometry(5, .18, 1.3), light, 0, -.1, .2);
+  add(new T.BoxGeometry(1.8, .15, .7), light, 0, 0, 1.8);
+  add(new T.BoxGeometry(.15, .9, .8), light, 0, .45, 1.8);
+  add(new T.SphereGeometry(.5, 8, 6), MB(0x88ddff), 0, .4, .3).scale.set(1, .7, 1.4);
+  for (const sx of [-1, 1]) add(new T.CylinderGeometry(.06, .06, 1, 5), dark, sx * 1.3, -.1, -.6).rotation.x = Math.PI / 2;
   const prop = new T.Group(); prop.position.z = -2.2; g.add(prop);
   prop.add(new T.Mesh(new T.BoxGeometry(.18, 3, .12), dark)); prop.add(new T.Mesh(new T.BoxGeometry(3, .18, .12), dark));
   g.userData.prop = prop; g.scale.setScalar(9); return g;
 }
 
-/* ---------------- fire / smoke / sparks (2 draw calls) ---------------- */
+/* ---------------- particles ---------------- */
 function mkPS(n, additive){
   const pos = new Float32Array(n * 3).fill(-99999), siz = new Float32Array(n), col = new Float32Array(n * 4);
   const geo = new T.BufferGeometry();
@@ -173,8 +163,8 @@ function updPS(ps, dt){
     if (p.l <= 0){ ps.siz[i] = 0; ps.col[i * 4 + 3] = 0; continue; }
     p.l -= dt; const u = 1 - Math.max(0, p.l) / p.m;
     p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-    if (p.k === 2){ p.vx += 3 * dt; p.vy *= .995 }                       // smoke drifts
-    else if (p.k === 1){ p.vy -= 40 * dt }                               // sparks fall
+    if (p.k === 2){ p.vx += 3 * dt; p.vy *= .995 }
+    else if (p.k === 1){ p.vy -= 40 * dt }
     ps.pos[i * 3] = p.x; ps.pos[i * 3 + 1] = p.y; ps.pos[i * 3 + 2] = p.z;
     ps.siz[i] = lp(p.s0, p.s1, u);
     let r, g, b, a;
@@ -192,7 +182,7 @@ kk.position.set(TX, 0, TZ);
 S.add(kk);
 
 const tw = buildTower(); kk.add(tw.g);
-const actors = new T.Group(); kk.add(actors);                      // hidden when player is far away
+const actors = new T.Group(); kk.add(actors);
 const kong = buildKong(); actors.add(kong);
 const fireP = mkPS(240, true), smokeP = mkPS(110, false);
 actors.add(smokeP.pts, fireP.pts);
@@ -212,14 +202,14 @@ for (let i = 0; i < NSHOT; i++){ shots.push({ on: false, x: 0, y: 0, z: 0, dx: 0
 
 /* ---------------- Kong behaviour ---------------- */
 const GAP = 22;
-const K = { y: 420, th: .4, dir: 1, st: 'climb', stT: 0, phase: 0, nextLeap: 6, j: null, flinch: 0, dCur: 0 };
+const K = { y: 300, th: .4, dir: 1, st: 'climb', stT: 0, phase: 0, nextLeap: 6, j: null, flinch: 0, dCur: 0 };
 const PZ = { aL: -2, aR: -2, eL: -.3, eR: -.3, sp: .25, hL: -.3, hR: -.3, kL: .3, kR: .3, jaw: 0, hx: 0, tx: -.12, tz: 0, sq: 1 };
 let kkT = 0, flickT = 0;
 
 function stepKong(dt){
   K.phase += dt * 2.4 * (K.st === 'climb' ? 1 : .3);
   K.flinch = Math.max(0, K.flinch - dt * 2.5);
-  const top = TOP_H * .86, bottom = 300;
+  const top = TOP_H * .85, bottom = 80;
 
   if (K.st === 'climb'){
     const pulse = Math.max(0, Math.sin(K.phase));
@@ -249,9 +239,8 @@ function stepKong(dt){
   const dT = hw / Math.max(Math.abs(dx), Math.abs(dz)) + GAP;
   K.dCur = K.dCur ? K.dCur + (dT - K.dCur) * (1 - Math.exp(-4 * dt)) : dT;
   kong.position.set(dx * K.dCur, K.y, dz * K.dCur);
-  kong.rotation.y = K.th + Math.PI;                                  // belly faces the wall
+  kong.rotation.y = K.th + Math.PI;
 
-  /* pose targets */
   const s = Math.sin(K.phase), tg = {};
   if (K.st === 'climb'){
     const a = .5 + .5 * s, b = 1 - a;
@@ -261,7 +250,7 @@ function stepKong(dt){
     Object.assign(tg, { aL: -2.8, aR: -2.8, eL: -.3, eR: -.3, sp: .3, hL: -1.1, hR: -1.1, kL: 1.5, kR: 1.5, jaw: .2, hx: -.2, tx: -.25, tz: 0, sq: .88 });
   } else if (K.st === 'air'){
     Object.assign(tg, { aL: -2.9, aR: -2.9, eL: -.1, eR: -.1, sp: .5, hL: -.2, hR: -.2, kL: .2, kR: .2, jaw: .5, hx: -.35, tx: -.2, tz: 0, sq: 1.06 });
-  } else {                                                           // roar + chest beat
+  } else {
     const beat = .5 + .5 * Math.sin(K.stT * 13);
     Object.assign(tg, { aL: -.7, aR: -.7, eL: -1.9 * beat, eR: -1.9 * (1 - beat), sp: .15, hL: -.2, hR: -.2, kL: .2, kR: .2,
       jaw: .7 + .3 * Math.sin(K.stT * 9), hx: -.5, tx: .12, tz: 0, sq: 1 + .02 * beat });
@@ -285,7 +274,7 @@ function shoot(p, i){
   const sh = shots.find(o => !o.on); if (!sh) return;
   const fx = p.position.x, fy = p.position.y, fz = p.position.z, ddx = tx - fx, ddy = ty - fy, ddz = tz - fz, d = Math.hypot(ddx, ddy, ddz) || 1, sp = 520;
   sh.on = true; sh.x = fx; sh.y = fy; sh.z = fz; sh.dx = ddx / d * sp; sh.dy = ddy / d * sp; sh.dz = ddz / d * sp; sh.life = d / sp;
-  emit(fireP, 1, fx, fy, fz, 0, 0, 0, .15, 18, 4);                   // muzzle flash
+  emit(fireP, 1, fx, fy, fz, 0, 0, 0, .15, 18, 4);
 }
 
 function stepPlanes(dt){
@@ -293,7 +282,7 @@ function stepPlanes(dt){
     const o = p.userData.o;
     o.a += o.sp * dt;
     p.position.set(Math.cos(o.a) * o.R, K.y + o.h + Math.sin(kkT * .6 + i * 2) * 45, Math.sin(o.a) * o.R);
-    p.rotation.set(0, Math.PI - o.a, -.5 + Math.sin(kkT + i) * .1);  // nose along the orbit, banked into the turn
+    p.rotation.set(0, Math.PI - o.a, -.5 + Math.sin(kkT + i) * .1);
     p.userData.prop.rotation.z += dt * 60;
     if (o.burst > 0){ o.bt -= dt; if (o.bt <= 0){ shoot(p, i); o.burst--; o.bt = .07 } }
     else { o.fire -= dt; if (o.fire <= 0){ o.burst = 5 + (Math.random() * 4 | 0); o.fire = 2.5 + Math.random() * 3 } }
@@ -343,7 +332,7 @@ function stepFire(dt){
 /* ---------------- public API ---------------- */
 export function resetKingKong(){
   kkT = 0;
-  Object.assign(K, { y: 420, th: .4, dir: 1, st: 'climb', stT: 0, phase: 0, nextLeap: 6, j: null, flinch: 0, dCur: 0 });
+  Object.assign(K, { y: 300, th: .4, dir: 1, st: 'climb', stT: 0, phase: 0, nextLeap: 6, j: null, flinch: 0, dCur: 0 });
   shots.forEach((s, i) => { s.on = false; setI(shotM, i, 0, -9999, 0, 0, 0, 0); });
   [fireP, smokeP].forEach(ps => ps.P_.forEach(p => p.l = 0));
 }
@@ -360,11 +349,4 @@ export function tickKingKong(dt){
   updPS(fireP, dt); updPS(smokeP, dt);
 }
 
-/* optional: call from main.js to make the tower solid */
-export function kkCollide(x, y, z){
-  if (y < 0 || y > TOP_H) return false;
-  const h = widthAt(y) / 2 + 3;
-  return Math.abs(x - TX) < h && Math.abs(z - TZ) < h;
-}
-
-stepKong(0); stepPlanes(0);      // place everything correctly before the first frame
+stepKong(0); stepPlanes(0);
