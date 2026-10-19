@@ -5,7 +5,7 @@ import { say } from './ui.js';
 import { sl } from './world/items.js';
 
 /* ============================================================
-   *** ENABLE CACHE FIRST ***
+   ENABLE CACHE FIRST
    ============================================================ */
 if (window.THREE && window.THREE.Cache){
   window.THREE.Cache.enabled = true;
@@ -16,40 +16,45 @@ function MB(c, o){ return new T.MeshBasicMaterial(Object.assign({color:c, fog:fa
 function fwd(){ return { fx: Math.sin(G.P.yaw), fz: -Math.cos(G.P.yaw) }; }
 
 /* ============================================================
-   PERFORMANCE — auto-detects mobile, reduces GLB instances
+   PERFORMANCE — per-type caps so shark can't starve demon
    ============================================================ */
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || innerWidth < 768;
 const PERF = {
   sharkGLB:    IS_MOBILE ? 1 : 2,
   demonGLB:    IS_MOBILE ? 1 : 2,
+
+  // Pool sizes (all slots exist, some use GLB, some use procedural)
   sharkPool:   3,
   demonPool:   3,
   dragonPool:  2,
-  maxActive:   IS_MOBILE ? 3 : 5,
-  cullDist:    IS_MOBILE ? 400 : 800,
-  mixerDist:   IS_MOBILE ? 200 : 450,
+
+  // Max ACTIVE per type — independent caps so each type always has room
+  sharkMax:    IS_MOBILE ? 1 : 2,
+  demonMax:    IS_MOBILE ? 1 : 2,
+  dragonMax:   IS_MOBILE ? 1 : 1,
+
+  // Culling — must be > max spawn distance so nothing gets culled on spawn
+  cullDist:    IS_MOBILE ? 600 : 1000,
+  mixerDist:   IS_MOBILE ? 300 : 500,
+
   loadGapMs:   180
 };
-console.log('[PERF] mobile:', IS_MOBILE, '| sharkGLB:', PERF.sharkGLB, '| demonGLB:', PERF.demonGLB);
+console.log('[PERF] mobile:', IS_MOBILE,
+            '| sharkGLB:', PERF.sharkGLB, '| demonGLB:', PERF.demonGLB,
+            '| sharkMax:', PERF.sharkMax, '| demonMax:', PERF.demonMax);
 
 /* ============================================================
-   SHARK / DEMON TWEAK  (SIZE + BITE RADIUS)
+   SHARK / DEMON TWEAK
    ============================================================ */
 const SHARK_TWEAK = {
-  targetLen: 18,     // was 10 — bigger shark
-  xMul: 1.0, yMul: 1.0, zMul: 1.0, hideByName: [],
-  chaseSpeed: 95, chaseBoost: 1.5, turnRate: 2.5,
-  eatRadius: 22,     // was 16 — matches the bigger body
-  lifetime: 20
+  targetLen: 18, xMul: 1.0, yMul: 1.0, zMul: 1.0, hideByName: [],
+  chaseSpeed: 95, chaseBoost: 1.5, turnRate: 2.5, eatRadius: 22, lifetime: 20
 };
 if (typeof window !== 'undefined') window.SHARK_TWEAK = SHARK_TWEAK;
 
 const DEMON_TWEAK = {
-  targetLen: 55,     // was 35 — bigger demon
-  xMul: 1.0, yMul: 1.0, zMul: 1.0, hideByName: [],
-  chaseSpeed: 80, turnRate: 1.8,
-  biteRadius: 30,    // was 22 — matches the bigger body
-  lifetime: 24
+  targetLen: 55, xMul: 1.0, yMul: 1.0, zMul: 1.0, hideByName: [],
+  chaseSpeed: 80, turnRate: 1.8, biteRadius: 30, lifetime: 24
 };
 if (typeof window !== 'undefined') window.DEMON_TWEAK = DEMON_TWEAK;
 
@@ -163,17 +168,10 @@ if (!GLTF_AVAILABLE) console.warn('[AMBIENT] GLTFLoader missing — procedural o
    SEQUENTIAL LOADER QUEUE
    ============================================================ */
 const loadQueue = [];
-let queueRunning = false;
-
-function enqueueGLB(path, tweak, tag, onReady){
-  loadQueue.push({ path, tweak, tag, onReady });
-}
-
+function enqueueGLB(path, tweak, tag, onReady){ loadQueue.push({ path, tweak, tag, onReady }); }
 function pumpQueue(){
-  if (loadQueue.length === 0){ queueRunning = false; return; }
-  queueRunning = true;
+  if (loadQueue.length === 0) return;
   const item = loadQueue.shift();
-
   new T.GLTFLoader().load(
     item.path,
     (gltf) => {
@@ -190,13 +188,13 @@ function pumpQueue(){
             meshes.push({ obj: o, size: s, center: c, verts: vc, name: o.name || o.material?.name || '(unnamed)' });
           }
         });
-        if (meshes.length === 0){ console.warn('[' + item.tag + '] no meshes in', item.path); setTimeout(pumpQueue, PERF.loadGapMs); return; }
+        if (meshes.length === 0){ console.warn('[' + item.tag + '] no meshes'); setTimeout(pumpQueue, PERF.loadGapMs); return; }
 
         let bodyMesh = meshes[0], maxVerts = 0;
         for (const m of meshes){ if (m.verts > maxVerts){ maxVerts = m.verts; bodyMesh = m; } }
         const bodyBox = new T.Box3().setFromObject(bodyMesh.obj);
-        const bodySize = bodyBox.getSize(new T.Vector3());
         const bodyCenter = bodyBox.getCenter(new T.Vector3());
+        const bodySize = bodyBox.getSize(new T.Vector3());
         const bodyMax = Math.max(bodySize.x, bodySize.y, bodySize.z) || 1;
         const expandedBox = bodyBox.clone().expandByScalar(bodyMax * 2);
 
@@ -207,7 +205,7 @@ function pumpQueue(){
           const shouldHide = inHide || (m !== bodyMesh && outside);
           if (shouldHide){ m.obj.visible = false; hidden++; } else kept++;
         }
-        if (kept < 2){ for (const m of meshes) m.obj.visible = true; console.warn('[' + item.tag + '] too few meshes, reverting hides'); }
+        if (kept < 2){ for (const m of meshes) m.obj.visible = true; console.warn('[' + item.tag + '] too few meshes, reverting'); }
 
         const visibleBox = new T.Box3(); visibleBox.makeEmpty();
         for (const m of meshes){ if (m.obj.visible) visibleBox.union(new T.Box3().setFromObject(m.obj)); }
@@ -221,30 +219,22 @@ function pumpQueue(){
         if (gltf.animations && gltf.animations.length > 0){
           mixer = new T.AnimationMixer(scene);
           const action = mixer.clipAction(gltf.animations[0]);
-          action.setLoop(T.LoopRepeat);
-          action.play();
+          action.setLoop(T.LoopRepeat); action.play();
         }
 
-        console.log('[' + item.tag + '] ✓ visible:' + kept + '/' + meshes.length +
-                    ' length:' + (maxDim * baseScale).toFixed(2) +
-                    ' anims:' + (gltf.animations?.length || 0));
-
+        console.log('[' + item.tag + '] ✓ ' + item.path + ' visible:' + kept + '/' + meshes.length +
+                    ' length:' + (maxDim * baseScale).toFixed(2) + ' anims:' + (gltf.animations?.length || 0));
         item.onReady(scene, mixer);
-      } catch (e){
-        console.warn('[' + item.tag + '] setup failed:', e);
-      }
+      } catch (e){ console.warn('[' + item.tag + '] setup failed:', e); }
       setTimeout(pumpQueue, PERF.loadGapMs);
     },
     undefined,
-    (err) => {
-      console.warn('[' + item.tag + '] load failed:', err);
-      setTimeout(pumpQueue, PERF.loadGapMs);
-    }
+    (err) => { console.warn('[' + item.tag + '] ✗ ' + item.path + ' failed:', err); setTimeout(pumpQueue, PERF.loadGapMs); }
   );
 }
 
 /* ============================================================
-   SHARK — procedural fallback + GLB on first N slots
+   SHARK — procedural fallback + GLB
    ============================================================ */
 const SHARK_PROFILE = [
   new T.Vector2(0.05,0), new T.Vector2(0.20,0.5), new T.Vector2(0.50,1.5),
@@ -310,7 +300,7 @@ function bakeFinColors(geo, isDark){
   geo.setAttribute('color', new T.BufferAttribute(colors, 3));
 }
 
-function buildProceduralShark(){
+function buildProceduralShark(targetLength){
   const g = new T.Group();
   const mat = makeSharkMaterial();
   const bodyGeo = new T.LatheGeometry(SHARK_PROFILE, 44);
@@ -385,19 +375,17 @@ function buildProceduralShark(){
     n.position.set(sx*0.65, 0.15, -24.5); g.add(n);
   }
 
-  const mouth = new T.Group();
-  mouth.position.set(0, -1.4, -21); g.add(mouth);
+  const mouth = new T.Group(); mouth.position.set(0, -1.4, -21); g.add(mouth);
   const cavity = new T.Mesh(new T.SphereGeometry(1.8,18,14),
     new T.MeshStandardMaterial({color:0x160404, roughness:0.95}));
   cavity.scale.set(1.4, 0.45, 1.1); cavity.position.set(0,-0.2,-2.8); mouth.add(cavity);
 
-  const jawPivot = new T.Group();
-  jawPivot.position.set(0, -0.4, -1.4); mouth.add(jawPivot);
+  const jawPivot = new T.Group(); jawPivot.position.set(0, -0.4, -1.4); mouth.add(jawPivot);
   const lowerJaw = new T.Mesh(new T.SphereGeometry(1.5,18,12), mat);
   lowerJaw.scale.set(1.3,0.4,1.4); lowerJaw.position.set(0,-0.35,-1.3); jawPivot.add(lowerJaw);
 
-  // Procedural shark is scaled to match the new targetLen ratio (18/10 = 1.8×)
-  g.scale.setScalar(1.3 * (SHARK_TWEAK.targetLen / 10));
+  // Scale to match GLB target: procedural base is 54 long, so scale by targetLength/54
+  g.scale.setScalar(targetLength / 54);
   g.userData = { material: mat, jawPivot };
   g.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
   return g;
@@ -406,7 +394,7 @@ function buildProceduralShark(){
 const sharkPool = [];
 for (let i = 0; i < PERF.sharkPool; i++){
   const obj = new T.Group(); obj.visible = false; S.add(obj);
-  const procedural = buildProceduralShark();
+  const procedural = buildProceduralShark(SHARK_TWEAK.targetLen);
   obj.add(procedural);
   const slot = { obj, procedural, glb: null, mixer: null, useGLB: false, active: false, phase: 0, life: 0 };
   sharkPool.push(slot);
@@ -419,12 +407,12 @@ for (let i = 0; i < PERF.sharkPool; i++){
     });
   }
 }
-console.log('[SHARK] pool:', PERF.sharkPool, 'GLB slots:', PERF.sharkGLB);
+console.log('[SHARK] pool:', PERF.sharkPool, 'GLB slots:', PERF.sharkGLB, 'maxActive:', PERF.sharkMax);
 
 /* ============================================================
-   DRAGON (procedural) — used as demon fallback and standalone
+   DRAGON (procedural)
    ============================================================ */
-function buildDragon(scale, colors){
+function buildDragon(targetLength, colors){
   const g = new T.Group();
   const red = M(colors?.body ?? 0x882222);
   const redD = M(colors?.dark ?? 0x551111);
@@ -489,7 +477,8 @@ function buildDragon(scale, colors){
     blending:T.AdditiveBlending, depthWrite:false, fog:false
   })));
 
-  g.scale.setScalar(scale || 1.3);
+  // Base dragon body is ~31.5 long (9 segments × 3.5). Scale so length = targetLength.
+  g.scale.setScalar(targetLength / 31.5);
   g.userData = {
     pieces, wl, wr, jawPivot,
     wlOuterPivot: wl.userData.outerPivot,
@@ -502,13 +491,14 @@ function buildDragon(scale, colors){
 
 const dragonPool = [];
 for (let i = 0; i < PERF.dragonPool; i++){
-  const obj = buildDragon(1.3);
+  const obj = buildDragon(30);
   obj.visible = false; S.add(obj);
   dragonPool.push({ obj, active:false, phase:0, life:0, fireCooldown:1+Math.random()*2, fireBurstTime:0 });
 }
+console.log('[DRAGON] pool:', PERF.dragonPool, 'maxActive:', PERF.dragonMax);
 
 /* ============================================================
-   DEMON DRAGON — procedural fallback + GLB on first N slots
+   DEMON DRAGON
    ============================================================ */
 function makeDemonFire(){
   const N = 50;
@@ -527,12 +517,11 @@ function makeDemonFire(){
 }
 
 const demonPool = [];
-// Procedural demon fallback scaled relative to new targetLen (55 vs old 35)
-const demonProcScale = 2.4 * (DEMON_TWEAK.targetLen / 35);
 for (let i = 0; i < PERF.demonPool; i++){
   const obj = new T.Group(); obj.visible = false; S.add(obj);
 
-  const proceduralDemon = buildDragon(demonProcScale, { body: 0x660000, dark: 0x330000 });
+  // Procedural fallback: dark red dragon scaled to match DEMON_TWEAK.targetLen
+  const proceduralDemon = buildDragon(DEMON_TWEAK.targetLen, { body: 0x660000, dark: 0x330000 });
   obj.add(proceduralDemon);
 
   const fire = makeDemonFire();
@@ -552,9 +541,8 @@ for (let i = 0; i < PERF.demonPool; i++){
     });
   }
 }
-console.log('[DEMON] pool:', PERF.demonPool, 'GLB slots:', PERF.demonGLB);
+console.log('[DEMON] pool:', PERF.demonPool, 'GLB slots:', PERF.demonGLB, 'maxActive:', PERF.demonMax);
 
-/* start the queue */
 setTimeout(pumpQueue, 600);
 
 /* ============================================================
@@ -658,7 +646,6 @@ export function getShootableTargets(){
   for (const d of demonPool) if (d.active) out.push({ obj:d.obj, type:'demon' });
   return out;
 }
-
 export function killTarget(t){
   if (t.type === 'shark'){ const s = sharkPool.find(x => x.obj === t.obj); if (s){ s.active = false; spawnExplosion(t.obj.position, 0x66aaff); } }
   else if (t.type === 'dragon'){ const d = dragonPool.find(x => x.obj === t.obj); if (d){ d.active = false; spawnExplosion(t.obj.position, 0xff5522); } }
@@ -671,55 +658,53 @@ export function killTarget(t){
 /* ============================================================
    HELPERS
    ============================================================ */
-function totalActive(){
-  let n = 0;
-  for (const s of sharkPool) if (s.active) n++;
-  for (const d of dragonPool) if (d.active) n++;
-  for (const d of demonPool) if (d.active) n++;
-  return n;
-}
-function distToPlayer(p){
-  return Math.hypot(p.x - G.P.x, p.y - G.P.y, p.z - G.P.z);
-}
+function countSharks(){ return sharkPool.filter(s => s.active).length; }
+function countDemons(){ return demonPool.filter(d => d.active).length; }
+function countDragons(){ return dragonPool.filter(d => d.active).length; }
+function distToPlayer(p){ return Math.hypot(p.x - G.P.x, p.y - G.P.y, p.z - G.P.z); }
 
 /* ============================================================
-   SPAWN HELPERS
+   SPAWN HELPERS — per-type caps + safe distances
    ============================================================ */
 function spawnShark(){
-  if (totalActive() >= PERF.maxActive) return false;
+  if (countSharks() >= PERF.sharkMax){ return false; }
   const slot = sharkPool.find(s => !s.active); if (!slot) return false;
   const { fx, fz } = fwd();
   const side = rnd() < .5 ? -1 : 1;
-  const d = 300 + rnd()*200;
+  const d = 250 + rnd()*100; // 250-350 — well under cullDist
   slot.obj.position.set(G.P.x + fx*d + fz*side*80, G.P.y + (rnd()-.3)*60, G.P.z + fz*d - fx*side*80);
   slot.obj.rotation.set(0, Math.atan2(G.P.x - slot.obj.position.x, G.P.z - slot.obj.position.z) + Math.PI, 0);
   slot.obj.visible = true; slot.active = true; slot.phase = 0; slot.life = SHARK_TWEAK.lifetime;
+  console.log('[SHARK] spawned. Active:', countSharks(), '/', PERF.sharkMax);
   return true;
 }
 
 function spawnDragon(){
-  if (totalActive() >= PERF.maxActive) return false;
+  if (countDragons() >= PERF.dragonMax) return false;
   const slot = dragonPool.find(d => !d.active); if (!slot) return false;
   const { fx, fz } = fwd();
   const side = rnd() < .5 ? -1 : 1;
-  const d = 320 + rnd()*200;
+  const d = 280 + rnd()*100; // 280-380
   slot.obj.position.set(G.P.x + fx*d + fz*side*100, G.P.y + 40 + rnd()*40, G.P.z + fz*d - fx*side*100);
   slot.obj.visible = true; slot.active = true; slot.phase = 0; slot.life = 18;
   slot.fireCooldown = 0.5 + Math.random()*1.5; slot.fireBurstTime = 0;
   slot.obj.userData.drfV.forEach(v => { v.life = 0; });
+  console.log('[DRAGON] spawned. Active:', countDragons(), '/', PERF.dragonMax);
   return true;
 }
 
 function spawnDemon(){
-  if (totalActive() >= PERF.maxActive) return false;
+  if (countDemons() >= PERF.demonMax){ return false; }
   const slot = demonPool.find(d => !d.active); if (!slot) return false;
   const { fx, fz } = fwd();
   const side = rnd() < .5 ? -1 : 1;
-  const d = 400 + rnd()*200;
+  const d = 300 + rnd()*100; // 300-400 — well under cullDist
   slot.obj.position.set(G.P.x + fx*d + fz*side*100, G.P.y + 40 + rnd()*60, G.P.z + fz*d - fx*side*100);
   slot.obj.visible = true; slot.active = true; slot.phase = 0; slot.life = DEMON_TWEAK.lifetime;
   slot.fireCooldown = 0.5 + Math.random()*1.5; slot.fireBurstTime = 0;
   slot.fire.data.forEach(v => { v.life = 0; });
+  console.log('[DEMON] spawned. Active:', countDemons(), '/', PERF.demonMax,
+              '| GLB loaded:', slot.useGLB);
   return true;
 }
 
@@ -746,9 +731,7 @@ function tickTornado(dt){
     if (py < 0 || py > 90){
       if (Math.random() < 0.08){
         const a = Math.random()*Math.PI*2;
-        u.sprayPos[i*3] = Math.cos(a)*42;
-        u.sprayPos[i*3+1] = 0;
-        u.sprayPos[i*3+2] = Math.sin(a)*42;
+        u.sprayPos[i*3] = Math.cos(a)*42; u.sprayPos[i*3+1] = 0; u.sprayPos[i*3+2] = Math.sin(a)*42;
       }
     } else {
       const r = Math.hypot(px, pz) || 1, a = Math.atan2(pz, px);
@@ -758,10 +741,8 @@ function tickTornado(dt){
     }
   }
   u.sprayGeo.attributes.position.needsUpdate = true;
-
   const dx = G.P.x - wt.position.x, dz = G.P.z - wt.position.z;
   const d = Math.hypot(dx, dz) || 1;
-
   if (TOR.trapped){
     TOR.phase += dt; TOR.angle += dt*6;
     TOR.radius = Math.max(8, TOR.radius - dt*18);
@@ -771,9 +752,7 @@ function tickTornado(dt){
     G.P.y = TOR.height; G.P.vy = 0; G.P.fs = 0;
     if (TOR.phase > 2.5){
       TOR.trapped = false; TOR.flingTime = 1.2;
-      TOR.flingVX = Math.cos(TOR.angle)*500;
-      TOR.flingVZ = Math.sin(TOR.angle)*500;
-      TOR.flingVY = 200;
+      TOR.flingVX = Math.cos(TOR.angle)*500; TOR.flingVZ = Math.sin(TOR.angle)*500; TOR.flingVY = 200;
       say('Dave: "WHHHOOOAAA!"', 2);
     }
   } else if (d < 60 && G.P.y < 320){
@@ -790,15 +769,11 @@ function tickTornado(dt){
 function tickAsteroid(dt){
   if (!astA) return;
   astT += dt;
-  ast.position.x += astVel.x*dt;
-  ast.position.y += astVel.y*dt;
-  ast.position.z += astVel.z*dt;
+  ast.position.x += astVel.x*dt; ast.position.y += astVel.y*dt; ast.position.z += astVel.z*dt;
   const u = ast.userData;
   u.main.rotation.x += dt*0.3; u.main.rotation.y += dt*0.2;
   for (let i = u.NAT-1; i > 0; i--){
-    u.atPos[i*3] = u.atPos[(i-1)*3];
-    u.atPos[i*3+1] = u.atPos[(i-1)*3+1];
-    u.atPos[i*3+2] = u.atPos[(i-1)*3+2];
+    u.atPos[i*3] = u.atPos[(i-1)*3]; u.atPos[i*3+1] = u.atPos[(i-1)*3+1]; u.atPos[i*3+2] = u.atPos[(i-1)*3+2];
   }
   u.atPos[0] = ast.position.x; u.atPos[1] = ast.position.y; u.atPos[2] = ast.position.z + 60;
   u.atGeo.attributes.position.needsUpdate = true;
@@ -810,10 +785,8 @@ function tickSharks(dt){
   for (const s of sharkPool){
     if (!s.active) continue;
     s.life -= dt; s.phase += dt;
-
     const dist = distToPlayer(s.obj.position);
     if (dist > PERF.cullDist){ s.active = false; s.obj.visible = false; continue; }
-
     if (s.useGLB){
       if (s.mixer && dist < PERF.mixerDist) s.mixer.update(dt);
     } else {
@@ -821,27 +794,19 @@ function tickSharks(dt){
       if (shader) shader.uniforms.uTime.value = s.phase;
       s.procedural.userData.jawPivot.rotation.x = -Math.abs(Math.sin(s.phase*1.5))*0.22 - 0.03;
     }
-
-    const dx = G.P.x - s.obj.position.x;
-    const dy = G.P.y - s.obj.position.y;
-    const dz = G.P.z - s.obj.position.z;
+    const dx = G.P.x - s.obj.position.x, dy = G.P.y - s.obj.position.y, dz = G.P.z - s.obj.position.z;
     const d = Math.hypot(dx, dy, dz) || 1;
     const targetYaw = Math.atan2(dx, dz) + Math.PI;
     const speed = Math.min(SHARK_TWEAK.chaseSpeed, d * SHARK_TWEAK.chaseBoost);
     s.obj.position.x += (dx/d)*speed*dt;
     s.obj.position.y += (dy/d)*speed*dt;
     s.obj.position.z += (dz/d)*speed*dt;
-
     let yd = targetYaw - s.obj.rotation.y;
-    while (yd > Math.PI) yd -= Math.PI*2;
-    while (yd < -Math.PI) yd += Math.PI*2;
+    while (yd > Math.PI) yd -= Math.PI*2; while (yd < -Math.PI) yd += Math.PI*2;
     const mr = SHARK_TWEAK.turnRate*dt;
-    if (Math.abs(yd) < mr) s.obj.rotation.y = targetYaw;
-    else s.obj.rotation.y += Math.sign(yd)*mr;
-
+    if (Math.abs(yd) < mr) s.obj.rotation.y = targetYaw; else s.obj.rotation.y += Math.sign(yd)*mr;
     const tr = -Math.sign(yd)*Math.min(Math.abs(yd), 0.35);
     s.obj.rotation.z += (tr - s.obj.rotation.z)*Math.min(1, dt*3);
-
     if (d < SHARK_TWEAK.eatRadius && G.P.hit <= 0){
       G.P.hit = 1.4; G.P.fs *= 0.4; G.Q.bumps++; G.Q.clean = 0;
       G.shake = 1.2; say('Dave: "OI! SHARK!"', 2);
@@ -857,10 +822,8 @@ function tickDragons(dt){
     d.life -= dt; d.phase += dt;
     const dist = distToPlayer(d.obj.position);
     if (dist > PERF.cullDist){ d.active = false; d.obj.visible = false; continue; }
-
     const u = d.obj.userData;
-    const flap = Math.sin(d.phase*5)*0.5;
-    const flapD = Math.sin(d.phase*5-0.7)*0.4;
+    const flap = Math.sin(d.phase*5)*0.5, flapD = Math.sin(d.phase*5-0.7)*0.4;
     u.wl.rotation.z = flap; u.wlOuterPivot.rotation.z = flapD;
     u.wr.rotation.z = -flap; u.wrOuterPivot.rotation.z = -flapD;
     u.pieces.forEach((s,i) => {
@@ -868,14 +831,10 @@ function tickDragons(dt){
       s.position.x = Math.sin(d.phase*1.8 + i*0.4)*2;
     });
     u.jawPivot.rotation.x = -Math.abs(Math.sin(d.phase*1.5))*0.3;
-
-    const dx = G.P.x - d.obj.position.x;
-    const dz = G.P.z - d.obj.position.z;
+    const dx = G.P.x - d.obj.position.x, dz = G.P.z - d.obj.position.z;
     const dl = Math.hypot(dx, dz) || 1;
-    d.obj.position.x += (dx/dl)*55*dt;
-    d.obj.position.z += (dz/dl)*55*dt;
+    d.obj.position.x += (dx/dl)*55*dt; d.obj.position.z += (dz/dl)*55*dt;
     d.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
-
     if (d.life <= 0){ d.active = false; d.obj.visible = false; }
   }
 }
@@ -884,36 +843,30 @@ function tickDemons(dt){
   for (const d of demonPool){
     if (!d.active) continue;
     d.life -= dt; d.phase += dt;
-
     const dist = distToPlayer(d.obj.position);
     if (dist > PERF.cullDist){ d.active = false; d.obj.visible = false; continue; }
 
-    if (d.mixer && dist < PERF.mixerDist) d.mixer.update(dt);
-    else if (d.useGLB && d.mixer) d.mixer.update(dt * 2);
-
-    if (!d.useGLB && d.proceduralDemon){
+    if (d.useGLB && d.mixer){
+      if (dist < PERF.mixerDist) d.mixer.update(dt);
+      else d.mixer.update(dt * 2);
+    } else if (d.proceduralDemon){
       const u = d.proceduralDemon.userData;
       const flap = Math.sin(d.phase*5)*0.5;
       u.wl.rotation.z = flap;
       u.wr.rotation.z = -flap;
     }
 
-    const dx = G.P.x - d.obj.position.x;
-    const dy = G.P.y - d.obj.position.y;
-    const dz = G.P.z - d.obj.position.z;
+    const dx = G.P.x - d.obj.position.x, dy = G.P.y - d.obj.position.y, dz = G.P.z - d.obj.position.z;
     const dl = Math.hypot(dx, dy, dz) || 1;
     const speed = Math.min(DEMON_TWEAK.chaseSpeed, dl*1.2);
     d.obj.position.x += (dx/dl)*speed*dt;
     d.obj.position.y += (dy/dl)*speed*dt;
     d.obj.position.z += (dz/dl)*speed*dt;
-
     const ty = Math.atan2(dx, dz) + Math.PI;
     let yd = ty - d.obj.rotation.y;
-    while (yd > Math.PI) yd -= Math.PI*2;
-    while (yd < -Math.PI) yd += Math.PI*2;
+    while (yd > Math.PI) yd -= Math.PI*2; while (yd < -Math.PI) yd += Math.PI*2;
     const mr = DEMON_TWEAK.turnRate*dt;
-    if (Math.abs(yd) < mr) d.obj.rotation.y = ty;
-    else d.obj.rotation.y += Math.sign(yd)*mr;
+    if (Math.abs(yd) < mr) d.obj.rotation.y = ty; else d.obj.rotation.y += Math.sign(yd)*mr;
 
     if (d.fireBurstTime > 0){
       d.fireBurstTime -= dt;
@@ -923,9 +876,7 @@ function tickDemons(dt){
           d.fire.pos[i*3]   = (Math.random()-.5)*6;
           d.fire.pos[i*3+1] = (Math.random()-.5)*4;
           d.fire.pos[i*3+2] = 15 + (Math.random()-.5)*6;
-          v.vx = (Math.random()-.5)*20;
-          v.vy = (Math.random()-.5)*12;
-          v.vz = 30 + Math.random()*15;
+          v.vx = (Math.random()-.5)*20; v.vy = (Math.random()-.5)*12; v.vz = 30 + Math.random()*15;
           v.life = 0.9 + Math.random()*0.6;
         }
       }
@@ -937,9 +888,7 @@ function tickDemons(dt){
       const v = d.fire.data[i];
       if (v.life > 0){
         v.life -= dt;
-        d.fire.pos[i*3] += v.vx*dt;
-        d.fire.pos[i*3+1] += v.vy*dt;
-        d.fire.pos[i*3+2] += v.vz*dt;
+        d.fire.pos[i*3] += v.vx*dt; d.fire.pos[i*3+1] += v.vy*dt; d.fire.pos[i*3+2] += v.vz*dt;
         if (v.life <= 0) d.fire.pos[i*3+1] = -99999;
       }
     }
@@ -971,13 +920,12 @@ function tickOctopus(dt){
 /* ============================================================
    MASTER TIMERS
    ============================================================ */
-let spawnT = 8, sharkTimer = 3, dragonTimer = 8, demonTimer = 3;
+let spawnT = 8, sharkTimer = 2, dragonTimer = 8, demonTimer = 2;
 
 export function resetAmbient(){
   wt.visible = false; wtA = false; wtT = 0; wtSpin = 0;
   TOR.trapped = false; TOR.flingTime = 0; TOR.phase = 0;
   ast.visible = false; astA = false; astT = 0;
-
   sharkPool.forEach(s => { s.active = false; s.obj.visible = false; if (s.mixer){ s.mixer.stopAllAction(); s.mixer.setTime(0); } });
   dragonPool.forEach(d => { d.active = false; d.obj.visible = false; });
   demonPool.forEach(d => {
@@ -985,12 +933,10 @@ export function resetAmbient(){
     if (d.mixer){ d.mixer.stopAllAction(); d.mixer.setTime(0); }
     d.fire.data.forEach(v => { v.life = 0; });
   });
-
   oct.visible = false; octA = false; octT = 0;
   explosions.slice().forEach(e => { S.remove(e.mesh); e.mesh.geometry.dispose(); e.mesh.material.dispose(); });
   explosions.length = 0;
-
-  spawnT = 8; sharkTimer = 3; dragonTimer = 8; demonTimer = 3;
+  spawnT = 8; sharkTimer = 2; dragonTimer = 8; demonTimer = 2;
 }
 
 function pickOne(){
@@ -1028,14 +974,11 @@ export function tickAmbient(dt){
   if (dragonTimer <= 0){ if (G.alt > 40 && G.alt < 2400) spawnDragon(); dragonTimer = 10 + Math.random()*8; }
 
   demonTimer -= dt;
-  if (demonTimer <= 0){ if (G.alt > 20 && demonPool.length > 0) spawnDemon(); demonTimer = 4 + Math.random()*3; }
+  if (demonTimer <= 0){ if (G.alt > 20) spawnDemon(); demonTimer = 4 + Math.random()*3; }
 
   if (TOR.flingTime > 0){
-    G.P.x += TOR.flingVX*dt;
-    G.P.z += TOR.flingVZ*dt;
-    G.P.y += TOR.flingVY*dt;
-    TOR.flingVX *= 0.95; TOR.flingVZ *= 0.95;
-    TOR.flingVY -= 80*dt; TOR.flingTime -= dt;
+    G.P.x += TOR.flingVX*dt; G.P.z += TOR.flingVZ*dt; G.P.y += TOR.flingVY*dt;
+    TOR.flingVX *= 0.95; TOR.flingVZ *= 0.95; TOR.flingVY -= 80*dt; TOR.flingTime -= dt;
     if (G.P.y < 14) G.P.y = 14;
   }
 
@@ -1046,4 +989,4 @@ export function tickAmbient(dt){
   tickDemons(dt);
   tickOctopus(dt);
   tickExplosions(dt);
-     }
+}
