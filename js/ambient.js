@@ -13,7 +13,7 @@ function fwd(){ return { fx: Math.sin(G.P.yaw), fz: -Math.cos(G.P.yaw) }; }
    SHARK TUNING
    ============================================================ */
 const SHARK_TWEAK = {
-  targetLen: 10,
+  targetLen: 25,
   xMul: 1.0,
   yMul: 1.0,
   zMul: 1.0,
