@@ -30,14 +30,14 @@ if (typeof window !== 'undefined') window.SHARK_TWEAK = SHARK_TWEAK;
    DEMON DRAGON TUNING
    ============================================================ */
 const DEMON_TWEAK = {
-  targetLen: 35,       // 3.5x the shark — visibly a dragon
+  targetLen: 35,
   xMul: 1.0,
   yMul: 1.0,
   zMul: 1.0,
   hideByName: [],
-  chaseSpeed: 80,      // a bit slower than shark
-  turnRate:   1.8,     // lumbering, imposing turns
-  biteRadius: 22,      // bigger mouth
+  chaseSpeed: 80,
+  turnRate:   1.8,
+  biteRadius: 22,
   lifetime:   24
 };
 if (typeof window !== 'undefined') window.DEMON_TWEAK = DEMON_TWEAK;
@@ -604,7 +604,7 @@ for (let i = 0; i < 3; i++){
 }
 
 /* ============================================================
-   DEMON DRAGON — separate pool, only populated when GLB loads
+   DEMON DRAGON — pool of 5, loads from GLB, only active when loaded
    ============================================================ */
 function makeDemonFire(){
   const N = 60;
@@ -624,7 +624,7 @@ function makeDemonFire(){
 
 const demonPool = [];
 
-for (let i = 0; i < 3; i++){
+for (let i = 0; i < 5; i++){
   loadGLBWithHide('assets/demondragon.glb', i, DEMON_TWEAK, 'DEMON', (scene, mixer) => {
     const obj = new T.Group();
     obj.visible = false;
@@ -1044,7 +1044,6 @@ function tickDemons(dt){
     const dz = G.P.z - d.obj.position.z;
     const dist = Math.hypot(dx, dy, dz) || 1;
 
-    /* Chase player */
     const targetYaw = Math.atan2(dx, dz) + Math.PI;
     const speed = Math.min(DEMON_TWEAK.chaseSpeed, dist * 1.2);
     d.obj.position.x += (dx/dist) * speed * dt;
@@ -1058,7 +1057,6 @@ function tickDemons(dt){
     if (Math.abs(yawDiff) < maxRot) d.obj.rotation.y = targetYaw;
     else d.obj.rotation.y += Math.sign(yawDiff) * maxRot;
 
-    /* Fire breath bursts — LOCAL SPACE, glued to dragon mouth */
     if (d.fireBurstTime > 0){
       d.fireBurstTime -= dt;
       for (let i = 0; i < d.fire.N; i++){
@@ -1093,7 +1091,6 @@ function tickDemons(dt){
     }
     d.fire.geo.attributes.position.needsUpdate = true;
 
-    /* Bite / damage */
     if (dist < DEMON_TWEAK.biteRadius){
       G.P.hit = 1.5; G.P.fs *= 0.35;
       G.Q.bumps++; G.Q.clean = 0;
@@ -1122,7 +1119,7 @@ function tickOctopus(dt){
 /* ============================================================
    MASTER TIMERS
    ============================================================ */
-let spawnT = 8, sharkTimer = 2, dragonTimer = 6, demonTimer = 10;
+let spawnT = 8, sharkTimer = 2, dragonTimer = 6, demonTimer = 2;
 
 export function resetAmbient(){
   wt.visible = false; wtA = false; wtT = 0; wtSpin = 0;
@@ -1147,7 +1144,7 @@ export function resetAmbient(){
   });
   explosions.length = 0;
 
-  spawnT = 8; sharkTimer = 2; dragonTimer = 6; demonTimer = 10;
+  spawnT = 8; sharkTimer = 2; dragonTimer = 6; demonTimer = 2;
 }
 
 function pickOne(){
@@ -1155,7 +1152,7 @@ function pickOne(){
   if (G.alt < 600) opts.push('wt', 'oct');
   if (G.alt > 40 && G.alt < 2400) opts.push('drg', 'drg', 'drg');
   if (G.alt > 20) opts.push('shk', 'shk', 'shk', 'shk');
-  if (G.alt > 80 && demonPool.length > 0) opts.push('demon', 'demon');
+  if (G.alt > 20 && demonPool.length > 0) opts.push('demon', 'demon', 'demon', 'demon');
   if (G.alt > 150) opts.push('ast', 'ast');
   if (opts.length === 0) opts.push('ast');
   const e = opts[(Math.random() * opts.length) | 0];
@@ -1209,8 +1206,8 @@ export function tickAmbient(dt){
   }
   demonTimer -= dt;
   if (demonTimer <= 0){
-    if (G.alt > 80 && demonPool.length > 0) spawnDemon();
-    demonTimer = 8 + Math.random() * 8;
+    if (G.alt > 20 && demonPool.length > 0) spawnDemon();
+    demonTimer = 3 + Math.random() * 3;
   }
 
   if (TOR.flingTime > 0){
@@ -1231,4 +1228,4 @@ export function tickAmbient(dt){
   tickDemons(dt);
   tickOctopus(dt);
   tickExplosions(dt);
-       }
+         }
